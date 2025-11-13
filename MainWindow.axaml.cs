@@ -20,8 +20,7 @@ namespace JetsonVisionApp
 
         private void BtnStart_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
-            // Tối ưu cho JetBot 2GB: 320x240 @ 15fps
-            cam = new CameraReader(320, 240);
+            cam = new CameraReader(320, 240); // Giảm độ phân giải để tăng FPS
             cam.FrameReady += OnFrame;
             cam.Start();
             BtnStart.IsEnabled = false;
@@ -30,11 +29,10 @@ namespace JetsonVisionApp
         private async void OnFrame(Image<Rgba32> img)
         {
             frameCounter++;
-            // JetBot 2GB: xử lý mỗi frame (framerate đã giảm xuống 15fps)
-            // Nếu vẫn lag, có thể skip: if (frameCounter % 2 != 0) return;
+            if (frameCounter % 2 != 0) return; // xử lý mỗi 2 frame
 
             var (annotated, binary) = ImageProcessing.ProcessFrame(img,
-                edgeThresh: 100f, minBlobArea: 40); // Tăng threshold để giảm số blob
+                edgeThresh: 80f, minBlobArea: 60);
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
@@ -50,27 +48,18 @@ namespace JetsonVisionApp
                     {
                         byte* dst = (byte*)fb.Address;
                         int w = annotated.Width, h = annotated.Height;
-                        int dstStride = fb.RowBytes;
-
-                        // Sử dụng ProcessPixelRows để đọc từ ImageSharp một cách chính xác
-                        annotated.ProcessPixelRows(accessor =>
+                        for (int y = 0; y < h; y++)
                         {
-                            for (int y = 0; y < h; y++)
+                            for (int x = 0; x < w; x++)
                             {
-                                var srcRow = accessor.GetRowSpan(y);
-                                byte* dstRow = dst + (y * dstStride);
-
-                                for (int x = 0; x < w; x++)
-                                {
-                                    var p = srcRow[x];
-                                    int offset = x * 4;
-                                    dstRow[offset + 0] = p.B; // Blue
-                                    dstRow[offset + 1] = p.G; // Green
-                                    dstRow[offset + 2] = p.R; // Red
-                                    dstRow[offset + 3] = 255; // Alpha
-                                }
+                                var p = annotated[x, y];
+                                int i = (y * w + x) * 4;
+                                dst[i + 0] = p.B;
+                                dst[i + 1] = p.G;
+                                dst[i + 2] = p.R;
+                                dst[i + 3] = 255;
                             }
-                        });
+                        }
                     }
                 }
                 Preview.Source = bmp;

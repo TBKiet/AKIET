@@ -27,19 +27,14 @@ public class CameraReader : IDisposable
     {
         if (running) return;
 
-        // Pipeline tối ưu cho JetBot 2GB AI Kit
-        // Sử dụng framerate thấp hơn (15fps) và format BGRx (4-byte aligned)
-        // Thêm videoconvert để đảm bảo stride đúng (no padding)
+        // Pipeline: xuất raw BGR tới stdout (fd=1)
         string pipeline =
-            $"nvarguscamerasrc sensor-mode=0 ! " +
-            $"video/x-raw(memory:NVMM),width={width},height={height},framerate=15/1,format=NV12 ! " +
-            $"nvvidconv ! video/x-raw,format=BGRx ! " +
-            $"videoconvert ! video/x-raw,format=RGBA,width={width},height={height} ! " +
-            $"fdsink sync=false fd=1";
+            $"nvarguscamerasrc ! video/x-raw(memory:NVMM),width={width},height={height},framerate=30/1 ! " +
+            "nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! video/x-raw,format=BGR ! fdsink fd=1";
 
         gstProcess = new Process();
         gstProcess.StartInfo.FileName = "gst-launch-1.0";
-        gstProcess.StartInfo.Arguments = pipeline;
+	gstProcess.StartInfo.Arguments = pipeline;
         gstProcess.StartInfo.RedirectStandardOutput = true;
         gstProcess.StartInfo.RedirectStandardError = true; // hữu ích để debug
         gstProcess.StartInfo.UseShellExecute = false;
@@ -54,9 +49,6 @@ public class CameraReader : IDisposable
         gstProcess.Start();
         gstProcess.BeginErrorReadLine();
 
-        Console.WriteLine($"CameraReader started: {width}x{height} @ 15fps, format=RGBA");
-        Console.WriteLine($"Expected frame size: {width * height * 4} bytes");
-
         running = true;
         readThread = new Thread(ReadLoop) { IsBackground = true };
         readThread.Start();
@@ -66,12 +58,12 @@ public class CameraReader : IDisposable
     {
         try
         {
-            int frameSize = width * height * 4; // RGBA: 4 bytes per pixel, no padding
+            int frameSize = width * height * 3; // BGR 8-bit
             var buffer = new byte[frameSize];
             Stream stream = gstProcess!.StandardOutput.BaseStream;
 
             while (running && !stream.CanRead)
-                Thread.Sleep(10);
+                Thread.Sleep(5);
 
             while (running)
             {
@@ -82,7 +74,7 @@ public class CameraReader : IDisposable
                     if (read <= 0)
                     {
                         // nếu read = 0, gst-process có thể kết thúc; dừng vòng lặp
-                        Thread.Sleep(10);
+                        Thread.Sleep(5);
                         continue;
                     }
                     totalRead += read;
@@ -91,41 +83,19 @@ public class CameraReader : IDisposable
                 if (!running) break;
                 if (totalRead < frameSize) continue;
 
-                // Debug: Log first frame info
-                static int frameCount = 0;
-                if (frameCount == 0)
-                {
-                    Console.WriteLine($"First frame received: {totalRead} bytes");
-                    Console.WriteLine($"Expected: {frameSize} bytes ({width}x{height}x4)");
-                    Console.WriteLine($"Match: {totalRead == frameSize}");
-                }
-                frameCount++;
-
-                // convert RGBA -> Image<Rgba32> với tối ưu cho JetBot
-                // videoconvert đảm bảo stride = width * 4 (no padding)
+                // convert BGR -> Image<Rgba32>
                 var img = new Image<Rgba32>(width, height);
-
-                unsafe
+                int stride = width * 3;
+                for (int y = 0; y < height; y++)
                 {
-                    img.ProcessPixelRows(accessor =>
+                    int baseIdx = y * stride;
+                    for (int x = 0; x < width; x++)
                     {
-                        int srcStride = width * 4; // RGBA packed, no padding
-                        for (int y = 0; y < height; y++)
-                        {
-                            var dstRow = accessor.GetRowSpan(y);
-                            int srcOffset = y * srcStride;
-
-                            for (int x = 0; x < width; x++)
-                            {
-                                int i = srcOffset + (x * 4);
-                                byte r = buffer[i + 0];
-                                byte g = buffer[i + 1];
-                                byte b = buffer[i + 2];
-                                byte a = buffer[i + 3];
-                                dstRow[x] = new Rgba32(r, g, b, a);
-                            }
-                        }
-                    });
+                        byte b = buffer[baseIdx + x * 3 + 0];
+                        byte g = buffer[baseIdx + x * 3 + 1];
+                        byte r = buffer[baseIdx + x * 3 + 2];
+                        img[x, y] = new Rgba32(r, g, b, 255);
+                    }
                 }
 
                 FrameReady?.Invoke(img);

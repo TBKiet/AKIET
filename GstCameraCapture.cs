@@ -21,23 +21,18 @@ public class GstCameraCapture : IDisposable
         pipeline = new Pipeline("camera-pipeline");
 
         var src = ElementFactory.Make("nvarguscamerasrc", "src");
-        var capsfilter1 = ElementFactory.Make("capsfilter", "filter1");
         var conv1 = ElementFactory.Make("nvvidconv", "conv1");
         var conv2 = ElementFactory.Make("videoconvert", "conv2");
-        var capsfilter2 = ElementFactory.Make("capsfilter", "filter2");
-        appsink = ElementFactory.Make("appsink", "mysink") as AppSink
+        var capsfilter = ElementFactory.Make("capsfilter", "filter");
+        appsink = ElementFactory.Make("appsink", "mysink") as AppSink 
                   ?? throw new Exception("Không tạo được appsink!");
 
-        if (src == null || conv1 == null || conv2 == null || capsfilter1 == null || capsfilter2 == null)
+        if (src == null || conv1 == null || conv2 == null)
             throw new Exception("Không tạo được 1 trong các phần tử GStreamer!");
 
-        // cấu hình caps cho camera source
-        var caps1 = Caps.FromString($"video/x-raw(memory:NVMM),width={width},height={height},framerate=30/1");
-        capsfilter1["caps"] = caps1;
-
-        // cấu hình định dạng BGR cho output
-        var caps2 = Caps.FromString($"video/x-raw,width={width},height={height},format=BGR");
-        capsfilter2["caps"] = caps2;
+        // cấu hình định dạng cho conv1 → conv2
+        var caps = Caps.FromString($"video/x-raw,width={width},height={height},format=BGR");
+        capsfilter["caps"] = caps;
 
         // cấu hình appsink
         appsink.EmitSignals = true;
@@ -46,19 +41,17 @@ public class GstCameraCapture : IDisposable
         appsink.NewSample += OnNewSample;
 
         // thêm các phần tử vào pipeline
-        pipeline.Add(src, capsfilter1, conv1, conv2, capsfilter2, appsink);
+        pipeline.Add(src, conv1, conv2, capsfilter, appsink);
 
-        // link từng đoạn: src → capsfilter1 → conv1 → conv2 → capsfilter2 → appsink
-        if (!src.Link(capsfilter1))
-            throw new Exception("Không link được src → capsfilter1");
-        if (!capsfilter1.Link(conv1))
-            throw new Exception("Không link được capsfilter1 → conv1");
+        // link từng đoạn
+        if (!src.Link(conv1))
+            throw new Exception("Không link được src → conv1");
         if (!conv1.Link(conv2))
             throw new Exception("Không link được conv1 → conv2");
-        if (!conv2.Link(capsfilter2))
-            throw new Exception("Không link được conv2 → capsfilter2");
-        if (!capsfilter2.Link(appsink))
-            throw new Exception("Không link được capsfilter2 → appsink");
+        if (!conv2.Link(capsfilter))
+            throw new Exception("Không link được conv2 → capsfilter");
+        if (!capsfilter.Link(appsink))
+            throw new Exception("Không link được capsfilter → appsink");
     }
 
     private void OnNewSample(object sender, GLib.SignalArgs args)

@@ -10,22 +10,14 @@ public static class ImageProcessing
     {
         int w = src.Width, h = src.Height;
         var gray = new byte[h, w];
-
-        // Tối ưu cho JetBot: sử dụng ProcessPixelRows để tăng tốc
-        src.ProcessPixelRows(accessor =>
+        for (int y = 0; y < h; y++)
         {
-            for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
             {
-                var row = accessor.GetRowSpan(y);
-                for (int x = 0; x < w; x++)
-                {
-                    var p = row[x];
-                    // Công thức grayscale nhanh hơn: (R + G + G + B) / 4
-                    gray[y, x] = (byte)((p.R + p.G + p.G + p.B) >> 2);
-                }
+                var p = src[x, y];
+                gray[y, x] = (byte)((0.299f * p.R) + (0.587f * p.G) + (0.114f * p.B));
             }
-        });
-
+        }
         return gray;
     }
 
@@ -86,10 +78,8 @@ public static class ImageProcessing
         var labels = new int[h, w];
         int nextLabel = 1;
         var blobs = new Dictionary<int, Blob>();
-
-        // Tối ưu cho JetBot: chỉ dùng 4-connectivity thay vì 8-connectivity
-        int[] dx = { -1, 0, 1, 0 };
-        int[] dy = { 0, -1, 0, 1 };
+        int[] dx = { -1, 0, 1, -1, 1, -1, 0, 1 };
+        int[] dy = { -1, -1, -1, 0, 0, 1, 1, 1 };
 
         for (int y = 0; y < h; y++)
         {
@@ -97,7 +87,7 @@ public static class ImageProcessing
             {
                 if (bin[y, x] == 0) continue;
                 int label = 0;
-                for (int k = 0; k < 4; k++) // chỉ 4 hướng
+                for (int k = 0; k < 8; k++)
                 {
                     int nx = x + dx[k], ny = y + dy[k];
                     if (nx >= 0 && nx < w && ny >= 0 && ny < h && labels[ny, nx] != 0)
@@ -124,50 +114,38 @@ public static class ImageProcessing
     public static void DrawOverlay(Image<Rgba32> dst, List<Blob> blobs, Rgba32 color)
     {
         int w = dst.Width, h = dst.Height;
-
-        // Tối ưu cho JetBot: giới hạn số blob hiển thị
-        var topBlobs = blobs.OrderByDescending(b => b.Area).Take(5).ToList();
-
-        dst.ProcessPixelRows(accessor =>
+        foreach (var b in blobs)
         {
-            foreach (var b in topBlobs)
+            int x0 = Math.Clamp(b.MinX, 0, w - 1);
+            int y0 = Math.Clamp(b.MinY, 0, h - 1);
+            int x1 = Math.Clamp(b.MaxX, 0, w - 1);
+            int y1 = Math.Clamp(b.MaxY, 0, h - 1);
+            var c = b.Centroid();
+
+            for (int x = x0; x <= x1; x++)
             {
-                int x0 = Math.Clamp(b.MinX, 0, w - 1);
-                int y0 = Math.Clamp(b.MinY, 0, h - 1);
-                int x1 = Math.Clamp(b.MaxX, 0, w - 1);
-                int y1 = Math.Clamp(b.MaxY, 0, h - 1);
-                var c = b.Centroid();
-
-                // Vẽ bounding box
-                for (int x = x0; x <= x1; x++)
-                {
-                    if (y0 >= 0 && y0 < h) accessor.GetRowSpan(y0)[x] = color;
-                    if (y1 >= 0 && y1 < h) accessor.GetRowSpan(y1)[x] = color;
-                }
-                for (int y = y0; y <= y1; y++)
-                {
-                    var row = accessor.GetRowSpan(y);
-                    if (x0 >= 0 && x0 < w) row[x0] = color;
-                    if (x1 >= 0 && x1 < w) row[x1] = color;
-                }
-
-                // Vẽ centroid (chữ thập nhỏ)
-                int cx = Math.Clamp(c.cx, 0, w - 1);
-                int cy = Math.Clamp(c.cy, 0, h - 1);
-                var redColor = new Rgba32(255, 0, 0);
-
-                for (int dx = -3; dx <= 3; dx++)
-                {
-                    int xx = cx + dx;
-                    if (xx >= 0 && xx < w) accessor.GetRowSpan(cy)[xx] = redColor;
-                }
-                for (int dy = -3; dy <= 3; dy++)
-                {
-                    int yy = cy + dy;
-                    if (yy >= 0 && yy < h) accessor.GetRowSpan(yy)[cx] = redColor;
-                }
+                if (y0 >= 0 && y0 < h) dst[x, y0] = color;
+                if (y1 >= 0 && y1 < h) dst[x, y1] = color;
             }
-        });
+            for (int y = y0; y <= y1; y++)
+            {
+                if (x0 >= 0 && x0 < w) dst[x0, y] = color;
+                if (x1 >= 0 && x1 < w) dst[x1, y] = color;
+            }
+
+            int cx = Math.Clamp(c.cx, 0, w - 1);
+            int cy = Math.Clamp(c.cy, 0, h - 1);
+            for (int dx = -4; dx <= 4; dx++)
+            {
+                int xx = cx + dx;
+                if (xx >= 0 && xx < w) dst[xx, cy] = new Rgba32(255, 0, 0);
+            }
+            for (int dy = -4; dy <= 4; dy++)
+            {
+                int yy = cy + dy;
+                if (yy >= 0 && yy < h) dst[cx, yy] = new Rgba32(255, 0, 0);
+            }
+        }
     }
 
     public static (Image<Rgba32> annotated, byte[,] binary) ProcessFrame(Image<Rgba32> frame,
