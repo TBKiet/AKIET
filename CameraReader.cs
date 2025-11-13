@@ -6,7 +6,8 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
 /// <summary>
-/// Đọc raw BGR frames từ gst-launch bằng fdsink fd=1.
+/// Đọc raw BGRx frames từ gst-launch bằng fdsink fd=1.
+/// BGRx format: 4 bytes/pixel (B, G, R, padding) - native output của nvvidconv.
 /// </summary>
 public class CameraReader : IDisposable
 {
@@ -27,11 +28,11 @@ public class CameraReader : IDisposable
     {
         if (running) return;
 
-        // Pipeline: xuất raw BGR tới stdout (fd=1)
-        // nvvidconv convert trực tiếp sang BGR, bỏ videoconvert để tránh stride alignment issues
+        // Pipeline: xuất raw BGRx tới stdout (fd=1)
+        // BGRx = 4 bytes/pixel (B,G,R,X) - format native của nvvidconv, stride cố định = width*4
         string pipeline =
             $"nvarguscamerasrc ! video/x-raw(memory:NVMM),width={width},height={height},framerate=30/1 ! " +
-            $"nvvidconv ! video/x-raw,format=BGR ! fdsink fd=1 sync=false";
+            $"nvvidconv ! video/x-raw,format=BGRx ! fdsink fd=1 sync=false";
 
         gstProcess = new Process();
         gstProcess.StartInfo.FileName = "gst-launch-1.0";
@@ -59,11 +60,11 @@ public class CameraReader : IDisposable
     {
         try
         {
-            int frameSize = width * height * 3; // BGR 8-bit
+            int frameSize = width * height * 4; // BGRx = 4 bytes/pixel (B,G,R,X)
             var buffer = new byte[frameSize];
             Stream stream = gstProcess!.StandardOutput.BaseStream;
 
-            Console.WriteLine($"[CameraReader] Expected frame size: {frameSize} bytes ({width}x{height} BGR)");
+            Console.WriteLine($"[CameraReader] Expected frame size: {frameSize} bytes ({width}x{height} BGRx)");
 
             while (running && !stream.CanRead)
                 Thread.Sleep(5);
@@ -94,17 +95,20 @@ public class CameraReader : IDisposable
                     Console.WriteLine($"[CameraReader] Frame {frameCount}: Read {totalRead} bytes (expected {frameSize})");
                 }
 
-                // convert BGR -> Image<Rgba32>
+                // convert BGRx -> Image<Rgba32>
+                // BGRx format: mỗi pixel 4 bytes [B, G, R, X], X là padding byte (bỏ qua)
                 var img = new Image<Rgba32>(width, height);
-                int stride = width * 3;
+                int stride = width * 4; // 4 bytes per pixel
                 for (int y = 0; y < height; y++)
                 {
                     int baseIdx = y * stride;
                     for (int x = 0; x < width; x++)
                     {
-                        byte b = buffer[baseIdx + x * 3 + 0];
-                        byte g = buffer[baseIdx + x * 3 + 1];
-                        byte r = buffer[baseIdx + x * 3 + 2];
+                        int pixelIdx = baseIdx + x * 4;
+                        byte b = buffer[pixelIdx + 0];
+                        byte g = buffer[pixelIdx + 1];
+                        byte r = buffer[pixelIdx + 2];
+                        // byte 3 (X) bỏ qua - padding byte
                         img[x, y] = new Rgba32(r, g, b, 255);
                     }
                 }
