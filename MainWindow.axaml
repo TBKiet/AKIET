@@ -3,7 +3,7 @@
         x:Class="JetsonVisionApp.MainWindow"
         Title="Jetson Camera Viewer" Width="720" Height="560">
   <StackPanel>
-    <Image Name="Preview" Width="640" Height="480"/>
+    <Image Name="Preview" Stretch="None" HorizontalAlignment="Center"/>
     <Button Name="BtnStart" Content="Start Camera" Margin="10" Width="200" HorizontalAlignment="Center"/>
   </StackPanel>
 </Window>
