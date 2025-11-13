@@ -1,0 +1,11 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="JetsonVisionApp.MainWindow"
+        Title="Jetson Camera Viewer" Width="720" Height="560">
+  <StackPanel>
+    <Image Name="Preview" Stretch="None" HorizontalAlignment="Center"/>
+    <Button Name="BtnStart" Content="Start Camera" Margin="10" Width="200" HorizontalAlignment="Center"/>
+  </StackPanel>
+</Window>
+
+
