@@ -27,13 +27,14 @@ public class CameraReader : IDisposable
     {
         if (running) return;
 
-        // Pipeline tối ưu cho JetBot 2GB AI Kit với stride cố định
-        // Sử dụng videoscale để force stride alignment
+        // Pipeline tối ưu cho JetBot 2GB AI Kit
+        // Sử dụng framerate thấp hơn (15fps) và format BGRx (4-byte aligned)
+        // Thêm videoconvert để đảm bảo stride đúng (no padding)
         string pipeline =
             $"nvarguscamerasrc sensor-mode=0 ! " +
             $"video/x-raw(memory:NVMM),width={width},height={height},framerate=15/1,format=NV12 ! " +
-            $"nvvidconv ! video/x-raw,format=RGBA ! " +
-            $"videoscale ! video/x-raw,format=RGBA,width={width},height={height},pixel-aspect-ratio=1/1 ! " +
+            $"nvvidconv ! video/x-raw,format=BGRx ! " +
+            $"videoconvert ! video/x-raw,format=RGBA,width={width},height={height} ! " +
             $"fdsink sync=false fd=1";
 
         gstProcess = new Process();
@@ -65,75 +66,54 @@ public class CameraReader : IDisposable
     {
         try
         {
-            // Đọc buffer lớn hơn expected để catch padding
-            int expectedFrameSize = width * height * 4; // RGBA packed
-            int maxFrameSize = width * height * 4 + (height * 256); // thêm buffer cho padding
-            var buffer = new byte[maxFrameSize];
+            int frameSize = width * height * 4; // RGBA: 4 bytes per pixel, no padding
+            var buffer = new byte[frameSize];
             Stream stream = gstProcess!.StandardOutput.BaseStream;
 
             while (running && !stream.CanRead)
                 Thread.Sleep(10);
 
-            // Detect actual stride từ first frame
-            int actualStride = width * 4; // default
-            bool strideDetected = false;
-
             while (running)
             {
-                // Đọc 1 chunk lớn để detect stride
-                int chunkSize = strideDetected ? (actualStride * height) : maxFrameSize;
                 int totalRead = 0;
-
-                while (totalRead < chunkSize && running)
+                while (totalRead < frameSize && running)
                 {
-                    int read = stream.Read(buffer, totalRead, chunkSize - totalRead);
+                    int read = stream.Read(buffer, totalRead, frameSize - totalRead);
                     if (read <= 0)
                     {
+                        // nếu read = 0, gst-process có thể kết thúc; dừng vòng lặp
                         Thread.Sleep(10);
                         continue;
                     }
                     totalRead += read;
-
-                    // Stop early nếu đã đọc đủ 1 frame minimal
-                    if (!strideDetected && totalRead >= expectedFrameSize)
-                    {
-                        // Đợi thêm 100ms để xem có data padding không
-                        Thread.Sleep(100);
-                        if (stream.DataAvailable)
-                            continue; // Có thêm data, đọc tiếp
-                        else
-                            break; // Hết data, đây là 1 frame hoàn chỉnh
-                    }
                 }
 
                 if (!running) break;
-                if (totalRead < expectedFrameSize) continue;
+                if (totalRead < frameSize) continue;
 
-                // Detect stride from first frame
-                if (!strideDetected)
+                // Debug: Log first frame info
+                static int frameCount = 0;
+                if (frameCount == 0)
                 {
-                    actualStride = totalRead / height;
-                    strideDetected = true;
-
-                    Console.WriteLine($"Stride detection:");
-                    Console.WriteLine($"  Total bytes received: {totalRead}");
-                    Console.WriteLine($"  Expected (packed): {expectedFrameSize} bytes");
-                    Console.WriteLine($"  Detected stride: {actualStride} bytes/row");
-                    Console.WriteLine($"  Expected stride: {width * 4} bytes/row");
-                    Console.WriteLine($"  Padding per row: {actualStride - (width * 4)} bytes");
+                    Console.WriteLine($"First frame received: {totalRead} bytes");
+                    Console.WriteLine($"Expected: {frameSize} bytes ({width}x{height}x4)");
+                    Console.WriteLine($"Match: {totalRead == frameSize}");
                 }
+                frameCount++;
 
-                // convert RGBA -> Image<Rgba32>
+                // convert RGBA -> Image<Rgba32> với tối ưu cho JetBot
+                // videoconvert đảm bảo stride = width * 4 (no padding)
                 var img = new Image<Rgba32>(width, height);
 
                 unsafe
                 {
                     img.ProcessPixelRows(accessor =>
                     {
+                        int srcStride = width * 4; // RGBA packed, no padding
                         for (int y = 0; y < height; y++)
                         {
                             var dstRow = accessor.GetRowSpan(y);
-                            int srcOffset = y * actualStride; // Dùng actual stride!
+                            int srcOffset = y * srcStride;
 
                             for (int x = 0; x < width; x++)
                             {

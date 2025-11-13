@@ -21,13 +21,7 @@ namespace JetsonVisionApp
         private void BtnStart_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             // Tối ưu cho JetBot 2GB: 320x240 @ 15fps
-
-            // VERSION 1: Auto stride detection (dùng nếu version 2 không work)
-            // cam = new CameraReader_v2(320, 240);
-
-            // VERSION 2: Force stride với videoscale (default)
             cam = new CameraReader(320, 240);
-
             cam.FrameReady += OnFrame;
             cam.Start();
             BtnStart.IsEnabled = false;
@@ -36,63 +30,50 @@ namespace JetsonVisionApp
         private async void OnFrame(Image<Rgba32> img)
         {
             frameCounter++;
-            if (frameCounter % 2 != 0) return; // xử lý mỗi 2 frame
+            // JetBot 2GB: xử lý mỗi frame (framerate đã giảm xuống 15fps)
+            // Nếu vẫn lag, có thể skip: if (frameCounter % 2 != 0) return;
 
             var (annotated, binary) = ImageProcessing.ProcessFrame(img,
-                edgeThresh: 80f, minBlobArea: 60);
+                edgeThresh: 100f, minBlobArea: 40); // Tăng threshold để giảm số blob
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                int w = annotated.Width, h = annotated.Height;
-
-                // Kiểm tra xem kích thước bitmap đã đúng chưa, nếu chưa thì tạo lại
-                var bmp = Preview.Source as WriteableBitmap;
-                if (bmp == null || bmp.PixelSize.Width != w || bmp.PixelSize.Height != h)
-                {
-                    bmp = new WriteableBitmap(
-                        new Avalonia.PixelSize(w, h),
-                        new Avalonia.Vector(96, 96),
-                        Avalonia.Platform.PixelFormat.Bgra8888,
-                        Avalonia.Platform.AlphaFormat.Opaque);
-                    Preview.Source = bmp;
-                }
+                var bmp = new WriteableBitmap(
+                    new Avalonia.PixelSize(annotated.Width, annotated.Height),
+                    new Avalonia.Vector(96, 96),
+                    Avalonia.Platform.PixelFormat.Bgra8888,
+                    Avalonia.Platform.AlphaFormat.Opaque);
 
                 using (var fb = bmp.Lock())
                 {
                     unsafe
                     {
-                        byte* dstBase = (byte*)fb.Address;
+                        byte* dst = (byte*)fb.Address;
+                        int w = annotated.Width, h = annotated.Height;
+                        int dstStride = fb.RowBytes;
 
-                        // LẤY STRIDE THỰC TẾ TỪ FRAMEBUFFER
-                        int destStride = fb.RowBytes;
-
-                        for (int y = 0; y < h; y++)
+                        // Sử dụng ProcessPixelRows để đọc từ ImageSharp một cách chính xác
+                        annotated.ProcessPixelRows(accessor =>
                         {
-                            // Lấy con trỏ đến đầu hàng ĐÍCH (destination)
-                            byte* pDestRow = dstBase + (y * destStride);
-
-                            // Lấy tham chiếu đến hàng NGUỒN (source) để tăng tốc
-                            var srcSpan = annotated.GetPixelRowSpan(y);
-
-                            for (int x = 0; x < w; x++)
+                            for (int y = 0; y < h; y++)
                             {
-                                // Lấy pixel nguồn
-                                var p = srcSpan[x];
+                                var srcRow = accessor.GetRowSpan(y);
+                                byte* dstRow = dst + (y * dstStride);
 
-                                // Tính toán offset trong hàng đích
-                                int destOffset = x * 4;
-
-                                pDestRow[destOffset + 0] = p.B;
-                                pDestRow[destOffset + 1] = p.G;
-                                pDestRow[destOffset + 2] = p.R;
-                                pDestRow[destOffset + 3] = 255;
+                                for (int x = 0; x < w; x++)
+                                {
+                                    var p = srcRow[x];
+                                    int offset = x * 4;
+                                    dstRow[offset + 0] = p.B; // Blue
+                                    dstRow[offset + 1] = p.G; // Green
+                                    dstRow[offset + 2] = p.R; // Red
+                                    dstRow[offset + 3] = 255; // Alpha
+                                }
                             }
-                        }
+                        });
                     }
                 }
-
-                // Không cần gán lại Preview.Source = bmp; vì WriteableBitmap tự cập nhật
-                // (chỉ cần đảm bảo nó được tạo 1 lần và gán ban đầu)
+                Preview.Source = bmp;
             });
         }
 
