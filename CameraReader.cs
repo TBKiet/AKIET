@@ -6,8 +6,8 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
 /// <summary>
-/// Đọc raw RGBx frames từ gst-launch bằng fdsink fd=1.
-/// RGBx format: 4 bytes/pixel (R, G, B, padding) - native output của nvvidconv.
+/// Đọc raw RGBA frames từ gst-launch bằng fdsink fd=1.
+/// RGBA format: 4 bytes/pixel (R, G, B, A) - output của nvvidconv.
 /// </summary>
 public class CameraReader : IDisposable
 {
@@ -28,11 +28,11 @@ public class CameraReader : IDisposable
     {
         if (running) return;
 
-        // Pipeline: thử với RGBx thay vì BGRx
-        // RGBx = 4 bytes/pixel (R,G,B,X) - có thể nvvidconv output RGBx thay vì BGRx
+        // Pipeline: thử với RGBA format
+        // RGBA = 4 bytes/pixel (R,G,B,A) - format khác có thể được hỗ trợ
         string pipeline =
             $"nvarguscamerasrc ! video/x-raw(memory:NVMM),width={width},height={height},framerate=30/1 ! " +
-            $"nvvidconv ! video/x-raw,format=RGBx ! fdsink fd=1 sync=false";
+            $"nvvidconv ! video/x-raw,format=RGBA ! fdsink fd=1 sync=false";
 
         gstProcess = new Process();
         gstProcess.StartInfo.FileName = "gst-launch-1.0";
@@ -60,11 +60,11 @@ public class CameraReader : IDisposable
     {
         try
         {
-            int frameSize = width * height * 4; // RGBx = 4 bytes/pixel (R,G,B,X)
+            int frameSize = width * height * 4; // RGBA = 4 bytes/pixel (R,G,B,A)
             var buffer = new byte[frameSize];
             Stream stream = gstProcess!.StandardOutput.BaseStream;
 
-            Console.WriteLine($"[CameraReader] Expected frame size: {frameSize} bytes ({width}x{height} RGBx)");
+            Console.WriteLine($"[CameraReader] Expected frame size: {frameSize} bytes ({width}x{height} RGBA)");
 
             while (running && !stream.CanRead)
                 Thread.Sleep(5);
@@ -95,14 +95,14 @@ public class CameraReader : IDisposable
                     Console.WriteLine($"[CameraReader] Frame {frameCount}: Read {totalRead} bytes (expected {frameSize})");
                 }
 
-                // convert RGBx -> Image<Rgba32>
-                // RGBx format: mỗi pixel 4 bytes [R, G, B, X], X là padding byte (bỏ qua)
+                // convert RGBA -> Image<Rgba32>
+                // RGBA format: mỗi pixel 4 bytes [R, G, B, A]
                 var img = new Image<Rgba32>(width, height);
 
                 // Sử dụng ProcessPixelRows để có direct memory access và tránh stride issues
                 img.ProcessPixelRows(accessor =>
                 {
-                    int srcStride = width * 4; // RGBx stride
+                    int srcStride = width * 4; // RGBA stride
                     for (int y = 0; y < height; y++)
                     {
                         Span<Rgba32> pixelRow = accessor.GetRowSpan(y);
@@ -111,11 +111,11 @@ public class CameraReader : IDisposable
                         for (int x = 0; x < width; x++)
                         {
                             int srcIdx = srcRowStart + x * 4;
-                            byte r = buffer[srcIdx + 0];  // RGBx: R ở byte 0
+                            byte r = buffer[srcIdx + 0];  // RGBA: R ở byte 0
                             byte g = buffer[srcIdx + 1];  // G ở byte 1
                             byte b = buffer[srcIdx + 2];  // B ở byte 2
-                            // byte 3 (X) padding - bỏ qua
-                            pixelRow[x] = new Rgba32(r, g, b, 255);
+                            byte a = buffer[srcIdx + 3];  // A ở byte 3 (có thể bỏ qua)
+                            pixelRow[x] = new Rgba32(r, g, b, 255); // Force alpha = 255
                         }
                     }
                 });
