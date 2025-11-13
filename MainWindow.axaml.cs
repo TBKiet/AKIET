@@ -11,6 +11,7 @@ namespace JetsonVisionApp
     {
         private CameraReader? cam;
         private int frameCounter = 0;
+        private volatile bool isProcessing = false; // Flag để skip frames khi UI đang busy
 
         public MainWindow()
         {
@@ -20,7 +21,7 @@ namespace JetsonVisionApp
 
         private void BtnStart_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
-            cam = new CameraReader(640, 480); // 640x480 resolution
+            cam = new CameraReader(320, 240); // 320x240 để tăng FPS, giảm delay
             cam.FrameReady += OnFrame;
             cam.Start();
             BtnStart.IsEnabled = false;
@@ -28,11 +29,14 @@ namespace JetsonVisionApp
 
         private async void OnFrame(Image<Rgba32> img)
         {
+            // Skip frame nếu UI đang xử lý frame trước (drop frames để giảm latency)
+            if (isProcessing) return;
+
+            isProcessing = true;
             frameCounter++;
-            if (frameCounter % 2 != 0) return; // xử lý mỗi 2 frame
 
             var (annotated, binary) = ImageProcessing.ProcessFrame(img,
-                edgeThresh: 80f, minBlobArea: 60);
+                edgeThresh: 100f, minBlobArea: 80); // Tăng threshold để giảm số blobs, xử lý nhanh hơn
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
@@ -67,6 +71,8 @@ namespace JetsonVisionApp
                 }
                 Preview.Source = bmp;
             });
+
+            isProcessing = false; // Đánh dấu xong, cho phép xử lý frame tiếp theo
         }
 
         protected override void OnClosed(System.EventArgs e)

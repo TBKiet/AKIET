@@ -28,12 +28,16 @@ public class CameraReader : IDisposable
     {
         if (running) return;
 
-        // Pipeline: RGBA format với silent mode
+        // Pipeline: RGBA format với low-latency optimization
         // RGBA = 4 bytes/pixel (R,G,B,A)
-        // -q flag sẽ suppress messages, silent=true cho các elements hỗ trợ
+        // -q flag suppress messages, silent=true cho các elements
+        // Thêm do-timestamp=true và buffers-count để giảm latency
         string pipeline =
-            $"nvarguscamerasrc silent=true ! video/x-raw(memory:NVMM),width={width},height={height},framerate=30/1 ! " +
-            $"nvvidconv silent=true ! video/x-raw,format=RGBA ! fdsink fd=1 sync=false";
+            $"nvarguscamerasrc silent=true sensor-id=0 ! " +
+            $"video/x-raw(memory:NVMM),width={width},height={height},framerate=30/1 ! " +
+            $"nvvidconv silent=true ! video/x-raw,format=RGBA ! " +
+            $"queue max-size-buffers=1 leaky=downstream ! " +
+            $"fdsink fd=1 sync=false";
 
         gstProcess = new Process();
         gstProcess.StartInfo.FileName = "gst-launch-1.0";
