@@ -28,9 +28,10 @@ public class CameraReader : IDisposable
         if (running) return;
 
         // Pipeline: xuất raw BGR tới stdout (fd=1)
+        // nvvidconv convert trực tiếp sang BGR, bỏ videoconvert để tránh stride alignment issues
         string pipeline =
             $"nvarguscamerasrc ! video/x-raw(memory:NVMM),width={width},height={height},framerate=30/1 ! " +
-            "nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! video/x-raw,format=BGR ! fdsink fd=1";
+            $"nvvidconv ! video/x-raw,format=BGR ! fdsink fd=1 sync=false";
 
         gstProcess = new Process();
         gstProcess.StartInfo.FileName = "gst-launch-1.0";
@@ -62,9 +63,12 @@ public class CameraReader : IDisposable
             var buffer = new byte[frameSize];
             Stream stream = gstProcess!.StandardOutput.BaseStream;
 
+            Console.WriteLine($"[CameraReader] Expected frame size: {frameSize} bytes ({width}x{height} BGR)");
+
             while (running && !stream.CanRead)
                 Thread.Sleep(5);
 
+            int frameCount = 0;
             while (running)
             {
                 int totalRead = 0;
@@ -82,6 +86,13 @@ public class CameraReader : IDisposable
 
                 if (!running) break;
                 if (totalRead < frameSize) continue;
+
+                // Log first few frames để verify
+                frameCount++;
+                if (frameCount <= 3)
+                {
+                    Console.WriteLine($"[CameraReader] Frame {frameCount}: Read {totalRead} bytes (expected {frameSize})");
+                }
 
                 // convert BGR -> Image<Rgba32>
                 var img = new Image<Rgba32>(width, height);
