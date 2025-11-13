@@ -34,6 +34,12 @@ namespace JetsonVisionApp
             var (annotated, binary) = ImageProcessing.ProcessFrame(img,
                 edgeThresh: 80f, minBlobArea: 60);
 
+            // Debug log first frame
+            if (frameCounter == 2)
+            {
+                System.Console.WriteLine($"[MainWindow] Image size: {annotated.Width}x{annotated.Height}");
+            }
+
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 var bmp = new WriteableBitmap(
@@ -48,12 +54,21 @@ namespace JetsonVisionApp
                     {
                         byte* dst = (byte*)fb.Address;
                         int w = annotated.Width, h = annotated.Height;
+                        int stride = fb.RowBytes; // ✅ Lấy stride thực tế của WriteableBitmap
+
+                        // Debug log first frame
+                        if (frameCounter == 2)
+                        {
+                            System.Console.WriteLine($"[MainWindow] Bitmap stride: {stride} bytes (width={w}, expected={w*4})");
+                        }
+
                         for (int y = 0; y < h; y++)
                         {
+                            int rowStart = y * stride; // Offset đầu mỗi row
                             for (int x = 0; x < w; x++)
                             {
                                 var p = annotated[x, y];
-                                int i = (y * w + x) * 4;
+                                int i = rowStart + x * 4; // ✅ Tính đúng với stride thực tế
                                 dst[i + 0] = p.B;
                                 dst[i + 1] = p.G;
                                 dst[i + 2] = p.R;
