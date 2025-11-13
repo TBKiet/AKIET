@@ -98,19 +98,35 @@ public class CameraReader : IDisposable
                 // convert BGRx -> Image<Rgba32>
                 // BGRx format: mỗi pixel 4 bytes [B, G, R, X], X là padding byte (bỏ qua)
                 var img = new Image<Rgba32>(width, height);
-                int stride = width * 4; // 4 bytes per pixel
-                for (int y = 0; y < height; y++)
+
+                // Sử dụng ProcessPixelRows để có direct memory access và tránh stride issues
+                img.ProcessPixelRows(accessor =>
                 {
-                    int baseIdx = y * stride;
-                    for (int x = 0; x < width; x++)
+                    int srcStride = width * 4; // BGRx stride
+                    for (int y = 0; y < height; y++)
                     {
-                        int pixelIdx = baseIdx + x * 4;
-                        byte b = buffer[pixelIdx + 0];
-                        byte g = buffer[pixelIdx + 1];
-                        byte r = buffer[pixelIdx + 2];
-                        // byte 3 (X) bỏ qua - padding byte
-                        img[x, y] = new Rgba32(r, g, b, 255);
+                        Span<Rgba32> pixelRow = accessor.GetRowSpan(y);
+                        int srcRowStart = y * srcStride;
+
+                        for (int x = 0; x < width; x++)
+                        {
+                            int srcIdx = srcRowStart + x * 4;
+                            byte b = buffer[srcIdx + 0];
+                            byte g = buffer[srcIdx + 1];
+                            byte r = buffer[srcIdx + 2];
+                            // byte 3 (X) padding - bỏ qua
+                            pixelRow[x] = new Rgba32(r, g, b, 255);
+                        }
                     }
+                });
+
+                // Debug: verify pixel đầu tiên
+                if (frameCount == 1)
+                {
+                    var p0 = img[0, 0];
+                    var p1 = img[10, 0];
+                    Console.WriteLine($"[CameraReader] First pixel (0,0): R={p0.R}, G={p0.G}, B={p0.B}");
+                    Console.WriteLine($"[CameraReader] Pixel (10,0): R={p1.R}, G={p1.G}, B={p1.B}");
                 }
 
                 FrameReady?.Invoke(img);

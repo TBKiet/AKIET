@@ -38,6 +38,12 @@ namespace JetsonVisionApp
             if (frameCounter == 2)
             {
                 System.Console.WriteLine($"[MainWindow] Image size: {annotated.Width}x{annotated.Height}");
+                var p0 = annotated[0, 0];
+                var p1 = annotated[10, 0];
+                var p2 = annotated[0, 10];
+                System.Console.WriteLine($"[MainWindow] Pixel (0,0): R={p0.R}, G={p0.G}, B={p0.B}");
+                System.Console.WriteLine($"[MainWindow] Pixel (10,0): R={p1.R}, G={p1.G}, B={p1.B}");
+                System.Console.WriteLine($"[MainWindow] Pixel (0,10): R={p2.R}, G={p2.G}, B={p2.B}");
             }
 
             await Dispatcher.UIThread.InvokeAsync(() =>
@@ -74,6 +80,13 @@ namespace JetsonVisionApp
                                 dst[i + 2] = p.R;
                                 dst[i + 3] = 255;
                             }
+                        }
+
+                        // Debug: verify first few pixels in bitmap
+                        if (frameCounter == 2)
+                        {
+                            System.Console.WriteLine($"[MainWindow] Bitmap[0]: B={dst[0]}, G={dst[1]}, R={dst[2]}");
+                            System.Console.WriteLine($"[MainWindow] Bitmap[40]: B={dst[40]}, G={dst[41]}, R={dst[42]}");
                         }
                     }
                 }
