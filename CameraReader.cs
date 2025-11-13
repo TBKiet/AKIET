@@ -30,10 +30,10 @@ public class CameraReader : IDisposable
 
         // Pipeline: RGBA format với silent mode
         // RGBA = 4 bytes/pixel (R,G,B,A)
-        // silent=true để ngăn GStreamer debug messages leak vào stdout
+        // -q flag sẽ suppress messages, silent=true cho các elements hỗ trợ
         string pipeline =
             $"nvarguscamerasrc silent=true ! video/x-raw(memory:NVMM),width={width},height={height},framerate=30/1 ! " +
-            $"nvvidconv silent=true ! video/x-raw,format=RGBA ! fdsink fd=1 sync=false silent=true";
+            $"nvvidconv silent=true ! video/x-raw,format=RGBA ! fdsink fd=1 sync=false";
 
         gstProcess = new Process();
         gstProcess.StartInfo.FileName = "gst-launch-1.0";
