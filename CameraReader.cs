@@ -65,8 +65,6 @@ public class CameraReader : IDisposable
             var buffer = new byte[frameSize];
             Stream stream = gstProcess!.StandardOutput.BaseStream;
 
-            Console.WriteLine($"[CameraReader] Expected frame size: {frameSize} bytes ({width}x{height} RGBA)");
-
             while (running && !stream.CanRead)
                 Thread.Sleep(5);
 
@@ -89,32 +87,7 @@ public class CameraReader : IDisposable
                 if (!running) break;
                 if (totalRead < frameSize) continue;
 
-                // Log first few frames để verify
                 frameCount++;
-                if (frameCount <= 3)
-                {
-                    Console.WriteLine($"[CameraReader] Frame {frameCount}: Read {totalRead} bytes (expected {frameSize})");
-                }
-
-                // Skip frame 1 nếu chứa text (GStreamer messages leak)
-                // Check xem có phải ASCII text không
-                if (frameCount == 1)
-                {
-                    bool isText = true;
-                    for (int i = 0; i < Math.Min(20, buffer.Length); i++)
-                    {
-                        if (buffer[i] > 127 || (buffer[i] < 32 && buffer[i] != 10 && buffer[i] != 13))
-                        {
-                            isText = false;
-                            break;
-                        }
-                    }
-                    if (isText)
-                    {
-                        Console.WriteLine("[CameraReader] Frame 1 contains text, skipping...");
-                        continue; // Skip frame này
-                    }
-                }
 
                 // convert RGBA -> Image<Rgba32>
                 // RGBA format: mỗi pixel 4 bytes [R, G, B, A]
@@ -140,28 +113,6 @@ public class CameraReader : IDisposable
                         }
                     }
                 });
-
-                // Debug: verify raw buffer và pixel đầu tiên của VALID frame đầu tiên
-                if (frameCount <= 2) // Log cả frame 1 và 2 để compare
-                {
-                    // Dump first 50 bytes của buffer
-                    Console.Write($"[CameraReader] Frame {frameCount} - Raw buffer first 50 bytes: ");
-                    for (int i = 0; i < 50; i++)
-                    {
-                        Console.Write($"{buffer[i]:X2} ");
-                    }
-                    Console.WriteLine();
-
-                    // Verify pixels đã convert
-                    var p0 = img[0, 0];
-                    var p1 = img[10, 0];
-                    Console.WriteLine($"[CameraReader] Frame {frameCount} - First pixel (0,0): R={p0.R}, G={p0.G}, B={p0.B}");
-                    Console.WriteLine($"[CameraReader] Frame {frameCount} - Pixel (10,0): R={p1.R}, G={p1.G}, B={p1.B}");
-
-                    // Verify buffer position cho pixel (10,0)
-                    int idx10 = 10 * 4; // pixel 10 ở row 0
-                    Console.WriteLine($"[CameraReader] Frame {frameCount} - Buffer at pixel (10,0): [{idx10}]={buffer[idx10]:X2}, [{idx10+1}]={buffer[idx10+1]:X2}, [{idx10+2}]={buffer[idx10+2]:X2}, [{idx10+3}]={buffer[idx10+3]:X2}");
-                }
 
                 FrameReady?.Invoke(img);
             }

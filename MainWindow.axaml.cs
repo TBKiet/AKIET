@@ -20,7 +20,7 @@ namespace JetsonVisionApp
 
         private void BtnStart_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
-            cam = new CameraReader(320, 240); // Giảm độ phân giải để tăng FPS
+            cam = new CameraReader(640, 480); // 640x480 resolution
             cam.FrameReady += OnFrame;
             cam.Start();
             BtnStart.IsEnabled = false;
@@ -33,18 +33,6 @@ namespace JetsonVisionApp
 
             var (annotated, binary) = ImageProcessing.ProcessFrame(img,
                 edgeThresh: 80f, minBlobArea: 60);
-
-            // Debug log first frame
-            if (frameCounter == 2)
-            {
-                System.Console.WriteLine($"[MainWindow] Image size: {annotated.Width}x{annotated.Height}");
-                var p0 = annotated[0, 0];
-                var p1 = annotated[10, 0];
-                var p2 = annotated[0, 10];
-                System.Console.WriteLine($"[MainWindow] Pixel (0,0): R={p0.R}, G={p0.G}, B={p0.B}");
-                System.Console.WriteLine($"[MainWindow] Pixel (10,0): R={p1.R}, G={p1.G}, B={p1.B}");
-                System.Console.WriteLine($"[MainWindow] Pixel (0,10): R={p2.R}, G={p2.G}, B={p2.B}");
-            }
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
@@ -60,13 +48,7 @@ namespace JetsonVisionApp
                     {
                         byte* dst = (byte*)fb.Address;
                         int w = annotated.Width, h = annotated.Height;
-                        int stride = fb.RowBytes; // ✅ Lấy stride thực tế của WriteableBitmap
-
-                        // Debug log first frame
-                        if (frameCounter == 2)
-                        {
-                            System.Console.WriteLine($"[MainWindow] Bitmap stride: {stride} bytes (width={w}, expected={w*4})");
-                        }
+                        int stride = fb.RowBytes;
 
                         for (int y = 0; y < h; y++)
                         {
@@ -80,13 +62,6 @@ namespace JetsonVisionApp
                                 dst[i + 2] = p.R;
                                 dst[i + 3] = 255;
                             }
-                        }
-
-                        // Debug: verify first few pixels in bitmap
-                        if (frameCounter == 2)
-                        {
-                            System.Console.WriteLine($"[MainWindow] Bitmap[0]: B={dst[0]}, G={dst[1]}, R={dst[2]}");
-                            System.Console.WriteLine($"[MainWindow] Bitmap[40]: B={dst[40]}, G={dst[41]}, R={dst[42]}");
                         }
                     }
                 }
