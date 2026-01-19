@@ -12,8 +12,13 @@ if project_root not in sys.path:
 if "QT_QPA_PLATFORM_PLUGIN_PATH" in os.environ:
     os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
 
-# Force X11/xcb
-os.environ["QT_QPA_PLATFORM"] = "xcb"
+# Force X11/xcb if DISPLAY is set, otherwise use offscreen to prevent crash
+if "DISPLAY" in os.environ:
+    os.environ["QT_QPA_PLATFORM"] = "xcb"
+else:
+    print("WARNING: 'DISPLAY' environment variable not set. Using 'offscreen' platform.")
+    print("       UI will NOT be visible. Use 'ssh -X' or 'ssh -Y' to enable X11 forwarding.")
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 from PyQt5.QtWidgets import QApplication
 from src.ui.main_window import MainWindow
