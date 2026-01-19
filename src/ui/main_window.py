@@ -1,9 +1,9 @@
 import sys
 import cv2
-from PyQt6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
+from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                              QPushButton, QLabel, QFrame)
-from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QColor
+from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtGui import QColor
 
 from src.camera import Camera
 from src.detector import CircleDetector

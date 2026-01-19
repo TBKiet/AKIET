@@ -1,6 +1,6 @@
-from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout
-from PyQt6.QtCore import Qt, QPoint
-from PyQt6.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont
+from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout
+from PyQt5.QtCore import Qt, QPoint
+from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont
 import cv2
 import numpy as np
 
@@ -12,7 +12,7 @@ class CameraWidget(QLabel):
         super().__init__()
         self.setMinimumSize(640, 480)
         self.setStyleSheet("background-color: black;")
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter if hasattr(Qt, 'AlignmentFlag') else Qt.AlignCenter)
         self.setText("Waiting for Camera...")
 
     def update_frame(self, frame_bgr):
@@ -28,11 +28,11 @@ class CameraWidget(QLabel):
         bytes_per_line = ch * w
 
         # Create QImage
-        q_img = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+        q_img = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
 
         # Scale to fit widget
         pixmap = QPixmap.fromImage(q_img)
-        self.setPixmap(pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio))
+        self.setPixmap(pixmap.scaled(self.size(), Qt.KeepAspectRatio))
 
 class SimulationWidget(QWidget):
     """
@@ -71,20 +71,20 @@ class SimulationWidget(QWidget):
         # Draw Discs
         for disc in self.discs:
             painter.setBrush(disc.get('color', QColor("gray")))
-            painter.setPen(QPen(Qt.GlobalColor.white, 2))
+            painter.setPen(QPen(Qt.white, 2))
             # Transform or just use raw coordinates (assuming 1:1 mapping for simplicity now)
             radius = disc.get('radius', 10)
             painter.drawEllipse(QPoint(disc['x'], disc['y']), radius, radius)
 
         # Draw Robot Path
         if self.robot_path:
-            painter.setPen(QPen(QColor(0, 255, 0), 2, Qt.PenStyle.DashLine))
+            painter.setPen(QPen(QColor(0, 255, 0), 2, Qt.PenStyle.DashLine if hasattr(Qt, 'PenStyle') else Qt.DashLine))
             path_points = [QPoint(p[0], p[1]) for p in self.robot_path]
             painter.drawPolyline(path_points)
 
         # Draw Robot
         painter.setBrush(QColor("cyan"))
-        painter.setPen(Qt.GlobalColor.black)
+        painter.setPen(Qt.black)
         painter.drawEllipse(QPoint(self.robot_pos[0], self.robot_pos[1]), 15, 15)
 
     def _draw_grid(self, painter):

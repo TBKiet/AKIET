@@ -1,5 +1,5 @@
-opencv-python>=4.10.0
-PyQt6>=6.7.0
-numpy>=1.26.0
-ultralytics>=8.2.0  # Optional for future YOLO integration
-scipy>=1.13.0       # For path planning calculations
+opencv-python<4.10
+# PyQt5 (Da cai bang Conda)
+numpy<1.25.0
+scipy<1.11.0
+# ultralytics (Can cai PyTorch rieng truoc)

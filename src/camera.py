@@ -1,7 +1,7 @@
 import cv2
 import threading
 import time
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QObject, pyqtSignal
 import numpy as np
 
 class Camera(QObject):
