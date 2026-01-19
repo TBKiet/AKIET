@@ -23,9 +23,25 @@ class Camera(QObject):
         if self.running:
             return
 
-        self.cap = cv2.VideoCapture(self.camera_id)
+        # Pipeline GStreamer toi uu cho Jetson Nano -> OpenCV
+        pipeline = (
+            "nvarguscamerasrc sensor-id=0 ! "
+            "video/x-raw(memory:NVMM), width=1280, height=720, framerate=30/1 ! "
+            "nvvidconv ! "
+            "video/x-raw, format=BGRx ! "
+            "videoconvert ! "
+            "video/x-raw, format=BGR ! "
+            "appsink drop=1"
+        )
+
+        # fallback cho USB Cam neu pipeline GStreamer loi (chi de debug)
+        # self.cap = cv2.VideoCapture(0)
+
+        print(f"Starting camera with pipeline: {pipeline}")
+        self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+
         if not self.cap.isOpened():
-            print(f"Error: Could not open camera {self.camera_id}")
+            print(f"Error: Could not open camera with GStreamer pipeline.")
             return
 
         self.running = True

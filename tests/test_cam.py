@@ -7,14 +7,15 @@ print("OpenCV Build Info (Check for GSTREAMER):")
 print(cv2.getBuildInformation())
 
 def get_jetson_gstreamer_source():
-    # Pipeline don gian nhat co the, de auto-negotiate
+    # Pipeline GStreamer (Giong het src/camera.py - verified on Jetson Nano)
     return (
-        "nvarguscamerasrc ! "
-        "video/x-raw(memory:NVMM) ! "
+        "nvarguscamerasrc sensor-id=0 ! "
+        "video/x-raw(memory:NVMM), width=1280, height=720, framerate=30/1 ! "
         "nvvidconv ! "
         "video/x-raw, format=BGRx ! "
         "videoconvert ! "
-        "video/x-raw, format=BGR ! appsink drop=1"
+        "video/x-raw, format=BGR ! "
+        "appsink drop=1"
     )
 
 # cap = cv2.VideoCapture(0) # Cho USB Camera
