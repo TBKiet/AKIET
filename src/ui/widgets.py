@@ -25,7 +25,7 @@ class CameraWidget(QLabel):
         # Convert BGR to RGB
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         h, w, ch = frame_rgb.shape
-        bytes_per_line = ch * w
+        bytes_per_line = frame_rgb.strides[0]
 
         # Create QImage
         q_img = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
