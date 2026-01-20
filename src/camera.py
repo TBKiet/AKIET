@@ -52,16 +52,15 @@ class Camera(QObject):
 
         if csi_available:
             print("Attempting to open CSI camera with GStreamer pipeline...")
-            # Pipeline GStreamer toi uu cho Jetson Nano -> OpenCV
-            # Simplified pipeline: removed RGBA conversion, use BGRx directly
+            # Pipeline GStreamer working cho Jetson CSI camera
+            # Use 1280x720 @ 60fps (native sensor mode) for better performance
             pipeline = (
                 "nvarguscamerasrc sensor-id=0 ! "
-                "video/x-raw(memory:NVMM), width=640, height=480, framerate=30/1 ! "
-                "nvvidconv ! "
-                "video/x-raw, format=BGRx ! "
+                "video/x-raw(memory:NVMM), width=1280, height=720, framerate=60/1, format=(string)NV12 ! "
+                "nvvidconv flip-method=0 ! "
+                "video/x-raw, width=640, height=480, format=(string)BGRx ! "
                 "videoconvert ! "
-                "video/x-raw, format=BGR ! "
-                "appsink drop=1 sync=false"
+                "appsink"
             )
             print(f"Pipeline: {pipeline}")
             self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
