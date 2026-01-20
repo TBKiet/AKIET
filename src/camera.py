@@ -3,6 +3,7 @@ import threading
 import time
 from PyQt5.QtCore import QObject, pyqtSignal
 import numpy as np
+import subprocess
 
 class Camera(QObject):
     """
@@ -17,34 +18,76 @@ class Camera(QObject):
         self.cap = None
         self.running = False
         self.thread = None
+        self.camera_type = None  # 'csi', 'usb', or None
+
+    def _test_csi_camera(self):
+        """Test if CSI camera is available using gst-launch-1.0"""
+        try:
+            print("Testing CSI camera availability...")
+            # Test simple pipeline for 1 second
+            cmd = [
+                "gst-launch-1.0", "-q",
+                "nvarguscamerasrc", "num-buffers=10", "sensor-id=0", "!",
+                "fakesink"
+            ]
+            result = subprocess.run(cmd, capture_output=True, timeout=3)
+            if result.returncode == 0:
+                print("✓ CSI camera detected!")
+                return True
+            else:
+                print(f"✗ CSI camera test failed: {result.stderr.decode()}")
+                return False
+        except Exception as e:
+            print(f"✗ CSI camera test error: {e}")
+            return False
 
     def start(self):
         """Starts the camera capture thread."""
         if self.running:
             return
 
-        # Pipeline GStreamer toi uu cho Jetson Nano -> OpenCV
-        # Tương tự code C#: RGBA format, queue leaky, sync=false để giảm latency
-        pipeline = (
-            "nvarguscamerasrc silent=true sensor-id=0 ! "
-            "video/x-raw(memory:NVMM), width=640, height=480, framerate=30/1 ! "
-            "nvvidconv silent=true ! "
-            "video/x-raw, format=RGBA ! "
-            "queue max-size-buffers=1 leaky=downstream ! "
-            "videoconvert ! "
-            "video/x-raw, format=BGR ! "
-            "appsink drop=1 sync=false"
-        )
+        print(f"Camera type: {self.camera_type}")
+        # Try CSI camera first (for Jetson)
+        csi_available = self._test_csi_camera()
 
-        # fallback cho USB Cam neu pipeline GStreamer loi (chi de debug)
-        # self.cap = cv2.VideoCapture(0)
+        if csi_available:
+            print("Attempting to open CSI camera with GStreamer pipeline...")
+            # Pipeline GStreamer toi uu cho Jetson Nano -> OpenCV
+            # Simplified pipeline: removed RGBA conversion, use BGRx directly
+            pipeline = (
+                "nvarguscamerasrc sensor-id=0 ! "
+                "video/x-raw(memory:NVMM), width=640, height=480, framerate=30/1 ! "
+                "nvvidconv ! "
+                "video/x-raw, format=BGRx ! "
+                "videoconvert ! "
+                "video/x-raw, format=BGR ! "
+                "appsink drop=1 sync=false"
+            )
+            print(f"Pipeline: {pipeline}")
+            self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
 
-        print(f"Starting camera with pipeline: {pipeline}")
-        self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+            if self.cap.isOpened():
+                self.camera_type = 'csi'
+                print("✓ CSI camera opened successfully!")
+            else:
+                print("✗ Failed to open CSI camera with OpenCV")
+                self.cap = None
 
-        if not self.cap.isOpened():
-            print(f"Error: Could not open camera with GStreamer pipeline.")
-            return
+        # Fallback to USB camera
+        if self.cap is None or not self.cap.isOpened():
+            print("Trying USB camera (camera_id=0)...")
+            self.cap = cv2.VideoCapture(self.camera_id)
+
+            if self.cap.isOpened():
+                self.camera_type = 'usb'
+                print("✓ USB camera opened successfully!")
+                # Set resolution for USB camera
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            else:
+                print("✗ Failed to open USB camera")
+                print("ERROR: No camera available!")
+                return
 
         self.running = True
         self.thread = threading.Thread(target=self._capture_loop, daemon=True)
