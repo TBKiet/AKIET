@@ -20,73 +20,99 @@ class Camera(QObject):
         self.thread = None
         self.camera_type = None  # 'csi', 'usb', or None
 
-    def _test_csi_camera(self):
-        """Test if CSI camera is available using gst-launch-1.0"""
-        try:
-            print("Testing CSI camera availability...")
-            # Test simple pipeline for 1 second
-            cmd = [
-                "gst-launch-1.0", "-q",
-                "nvarguscamerasrc", "num-buffers=10", "sensor-id=0", "!",
-                "fakesink"
-            ]
-            result = subprocess.run(cmd, capture_output=True, timeout=3)
-            if result.returncode == 0:
-                print("✓ CSI camera detected!")
-                return True
-            else:
-                print(f"✗ CSI camera test failed: {result.stderr.decode()}")
-                return False
-        except Exception as e:
-            print(f"✗ CSI camera test error: {e}")
-            return False
-
     def start(self):
         """Starts the camera capture thread."""
         if self.running:
             return
 
-        print(f"Camera type: {self.camera_type}")
-        # Try CSI camera first (for Jetson)
-        csi_available = self._test_csi_camera()
+        # Try different camera options in order
+        camera_options = [
+            # Option 1: CSI Camera with GStreamer (Jetson Nano/Xavier)
+            {
+                'name': 'CSI (GStreamer - nvarguscamerasrc)',
+                'pipeline': (
+                    "nvarguscamerasrc sensor-id=0 ! "
+                    "video/x-raw(memory:NVMM), width=1280, height=720, framerate=30/1, format=NV12 ! "
+                    "nvvidconv flip-method=0 ! "
+                    "video/x-raw, width=640, height=480, format=BGRx ! "
+                    "videoconvert ! "
+                    "appsink"
+                ),
+                'type': 'gstreamer'
+            },
+            # Option 2: V4L2 with GStreamer (generic Linux)
+            {
+                'name': 'V4L2 (GStreamer)',
+                'pipeline': (
+                    "v4l2src device=/dev/video0 ! "
+                    "video/x-raw, width=640, height=480, framerate=30/1 ! "
+                    "videoconvert ! "
+                    "appsink"
+                ),
+                'type': 'gstreamer'
+            },
+            # Option 3: Direct USB/V4L2 (OpenCV default)
+            {
+                'name': 'USB/V4L2 (OpenCV)',
+                'id': 0,
+                'type': 'v4l2'
+            },
+            # Option 4: Test pattern (for debugging)
+            {
+                'name': 'Test Pattern',
+                'pipeline': (
+                    "videotestsrc pattern=ball ! "
+                    "video/x-raw, width=640, height=480, framerate=30/1 ! "
+                    "videoconvert ! "
+                    "appsink"
+                ),
+                'type': 'test'
+            }
+        ]
 
-        if csi_available:
-            print("Attempting to open CSI camera with GStreamer pipeline...")
-            # Pipeline GStreamer working cho Jetson CSI camera
-            # Use 1280x720 @ 60fps (native sensor mode) for better performance
-            pipeline = (
-                "nvarguscamerasrc sensor-id=0 ! "
-                "video/x-raw(memory:NVMM), width=1280, height=720, framerate=60/1, format=(string)NV12 ! "
-                "nvvidconv flip-method=0 ! "
-                "video/x-raw, width=640, height=480, format=(string)BGRx ! "
-                "videoconvert ! "
-                "appsink"
-            )
-            print(f"Pipeline: {pipeline}")
-            self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+        for option in camera_options:
+            print(f"\nTrying: {option['name']}...")
 
-            if self.cap.isOpened():
-                self.camera_type = 'csi'
-                print("✓ CSI camera opened successfully!")
-            else:
-                print("✗ Failed to open CSI camera with OpenCV")
+            try:
+                if option['type'] == 'gstreamer' or option['type'] == 'test':
+                    print(f"Pipeline: {option['pipeline']}")
+                    self.cap = cv2.VideoCapture(option['pipeline'], cv2.CAP_GSTREAMER)
+                else:  # v4l2
+                    print(f"Device ID: {option['id']}")
+                    self.cap = cv2.VideoCapture(option['id'], cv2.CAP_V4L2)
+                    if self.cap.isOpened():
+                        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+                if self.cap and self.cap.isOpened():
+                    # Test read a frame
+                    ret, frame = self.cap.read()
+                    if ret and frame is not None:
+                        self.camera_type = option['name']
+                        print(f"✓ {option['name']} opened successfully!")
+                        print(f"  Frame shape: {frame.shape}")
+                        break
+                    else:
+                        print(f"✗ {option['name']} opened but cannot read frame")
+                        self.cap.release()
+                        self.cap = None
+                else:
+                    print(f"✗ Failed to open {option['name']}")
+
+            except Exception as e:
+                print(f"✗ Error with {option['name']}: {e}")
+                if self.cap:
+                    self.cap.release()
                 self.cap = None
 
-        # Fallback to USB camera
         if self.cap is None or not self.cap.isOpened():
-            print("Trying USB camera (camera_id=0)...")
-            self.cap = cv2.VideoCapture(self.camera_id)
-
-            if self.cap.isOpened():
-                self.camera_type = 'usb'
-                print("✓ USB camera opened successfully!")
-                # Set resolution for USB camera
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            else:
-                print("✗ Failed to open USB camera")
-                print("ERROR: No camera available!")
-                return
+            print("\n❌ ERROR: No camera available!")
+            print("\nTroubleshooting tips:")
+            print("1. Install OpenCV with GStreamer: pip uninstall opencv-python && pip install opencv-contrib-python")
+            print("2. Check camera permissions: ls -l /dev/video*")
+            print("3. Add user to video group: sudo usermod -a -G video $USER")
+            print("4. Test GStreamer: gst-launch-1.0 v4l2src device=/dev/video0 ! xvimagesink")
+            return
 
         self.running = True
         self.thread = threading.Thread(target=self._capture_loop, daemon=True)
