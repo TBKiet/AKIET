@@ -24,14 +24,16 @@ class Camera(QObject):
             return
 
         # Pipeline GStreamer toi uu cho Jetson Nano -> OpenCV
+        # Tương tự code C#: RGBA format, queue leaky, sync=false để giảm latency
         pipeline = (
-            "nvarguscamerasrc sensor-id=0 ! "
-            "video/x-raw(memory:NVMM), width=1280, height=720, framerate=30/1 ! "
-            "nvvidconv ! "
-            "video/x-raw, format=BGRx ! "
+            "nvarguscamerasrc silent=true sensor-id=0 ! "
+            "video/x-raw(memory:NVMM), width=640, height=480, framerate=30/1 ! "
+            "nvvidconv silent=true ! "
+            "video/x-raw, format=RGBA ! "
+            "queue max-size-buffers=1 leaky=downstream ! "
             "videoconvert ! "
             "video/x-raw, format=BGR ! "
-            "appsink drop=1"
+            "appsink drop=1 sync=false"
         )
 
         # fallback cho USB Cam neu pipeline GStreamer loi (chi de debug)
