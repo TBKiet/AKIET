@@ -11,9 +11,12 @@ class CameraWidget(QLabel):
     def __init__(self):
         super().__init__()
         self.setMinimumSize(640, 480)
-        self.setStyleSheet("background-color: black;")
+        self.setMaximumSize(1920, 1080)  # Set max size to prevent over-stretching
+        # Use magenta to make it obvious if pixmap is not showing
+        self.setStyleSheet("background-color: magenta; border: 3px solid red;")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter if hasattr(Qt, 'AlignmentFlag') else Qt.AlignCenter)
         self.setText("Waiting for Camera...")
+        self.setScaledContents(False)  # Don't auto-scale, we'll do it manually
         self._frame_count = 0
 
     def update_frame(self, frame_bgr):

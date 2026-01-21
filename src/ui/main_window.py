@@ -1,7 +1,7 @@
 import sys
 import cv2
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-                             QPushButton, QLabel, QFrame)
+                             QPushButton, QLabel, QFrame, QSizePolicy)
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QColor
 
@@ -54,9 +54,18 @@ class MainWindow(QMainWindow):
 
         # --- Left Panel: Camera ---
         left_layout = QVBoxLayout()
+
+        # Add label
+        camera_label = QLabel("Live Camera Feed")
+        left_layout.addWidget(camera_label)
+
+        # Add camera widget with explicit sizing
         self.camera_widget = CameraWidget()
-        left_layout.addWidget(QLabel("Live Camera Feed"))
-        left_layout.addWidget(self.camera_widget)
+        self.camera_widget.setSizePolicy(
+            QSizePolicy.Expanding if hasattr(QSizePolicy, 'Expanding') else QSizePolicy.Policy.Expanding,
+            QSizePolicy.Expanding if hasattr(QSizePolicy, 'Expanding') else QSizePolicy.Policy.Expanding
+        )
+        left_layout.addWidget(self.camera_widget, stretch=10)  # Give it high stretch priority
 
         # Controls
         controls_layout = QHBoxLayout()
