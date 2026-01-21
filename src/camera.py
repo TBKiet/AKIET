@@ -81,16 +81,28 @@ class Camera(QObject):
                     print(f"Device ID: {option['id']}")
                     self.cap = cv2.VideoCapture(option['id'], cv2.CAP_V4L2)
                     if self.cap.isOpened():
+                        # Set resolution BEFORE reading any frame
                         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                        self.cap.set(cv2.CAP_PROP_FPS, 30)
+                        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce buffer for low latency
+                        print(f"  Requested: 640x480 @ 30fps")
 
                 if self.cap and self.cap.isOpened():
                     # Test read a frame
                     ret, frame = self.cap.read()
                     if ret and frame is not None:
                         self.camera_type = option['name']
+                        actual_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        actual_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        actual_fps = int(self.cap.get(cv2.CAP_PROP_FPS))
                         print(f"✓ {option['name']} opened successfully!")
+                        print(f"  Actual resolution: {actual_width}x{actual_height} @ {actual_fps}fps")
                         print(f"  Frame shape: {frame.shape}")
+
+                        # If resolution is still too large, resize
+                        if frame.shape[0] > 480 or frame.shape[1] > 640:
+                            print(f"  Note: Will resize frames to 640x480 during capture")
                         break
                     else:
                         print(f"✗ {option['name']} opened but cannot read frame")
@@ -132,6 +144,15 @@ class Camera(QObject):
         while self.running:
             ret, frame = self.cap.read()
             if ret:
+                # Resize if frame is too large (camera didn't respect resolution setting)
+                h, w = frame.shape[:2]
+                if h > 480 or w > 640:
+                    # Calculate aspect-preserving resize
+                    scale = min(640 / w, 480 / h)
+                    new_w = int(w * scale)
+                    new_h = int(h * scale)
+                    frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
                 self.frame_received.emit(frame)
             else:
                 print("Warning: Failed to read frame")
