@@ -3,11 +3,20 @@
 Simple test to verify PyQt5 can display images from OpenCV
 """
 import sys
-import cv2
-import numpy as np
+import os
+
+# CRITICAL: Handle Qt plugin conflicts BEFORE importing anything
+if "QT_QPA_PLATFORM_PLUGIN_PATH" in os.environ:
+    del os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"]
+
+# Import PyQt5 FIRST, before OpenCV and numpy
 from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import Qt
+
+# Now import OpenCV and numpy
+import cv2
+import numpy as np
 
 def main():
     app = QApplication(sys.argv)
