@@ -116,10 +116,22 @@ class MainWindow(QMainWindow):
         if not hasattr(self, '_frame_count'):
             self._frame_count = 0
         self._frame_count += 1
+
+        # Save first few frames to debug
+        if self._frame_count <= 3:
+            filename = f"/tmp/debug_frame_{self._frame_count}.jpg"
+            cv2.imwrite(filename, frame)
+            print(f"Saved frame to: {filename}")
+
         if self._frame_count % 30 == 1:  # Print every 30 frames
             print(f"Processing frame {self._frame_count}: shape={frame.shape}, dtype={frame.dtype}")
             print(f"  Frame min/max values: {frame.min()}/{frame.max()}")
-            print(f"  Frame first pixel: {frame[0,0]}")
+            print(f"  Frame mean BGR: {frame.mean(axis=(0,1))}")
+            # Check if frame is mostly one color
+            b_mean, g_mean, r_mean = frame.mean(axis=(0,1))
+            print(f"  Color dominance - B:{b_mean:.1f} G:{g_mean:.1f} R:{r_mean:.1f}")
+            if g_mean > b_mean + 50 and g_mean > r_mean + 50:
+                print(f"  WARNING: Frame is very GREEN! Camera might be pointed at green object or color issue")
 
         # BYPASS DETECTOR FOR NOW - just show raw frame
         vis_frame = frame.copy()
@@ -130,13 +142,10 @@ class MainWindow(QMainWindow):
         cv2.putText(vis_frame, f"Frame {self._frame_count}", (10, 60),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-        # Update Widget - bypass all detection for now
-        self.camera_widget.update_frame(vis_frame)
-
-        # Update Stats
-        self.lbl_stats.setText(f"Status: Running | Frame: {self._frame_count}")
-        return  # EARLY RETURN TO BYPASS DETECTION
-
+        # Add color info
+        b_mean, g_mean, r_mean = frame.mean(axis=(0,1))
+        cv2.putText(vis_frame, f"BGR: {b_mean:.0f},{g_mean:.0f},{r_mean:.0f}", (10, 90),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
         # === ORIGINAL CODE BELOW (DISABLED FOR DEBUG) ===
         # copy frame to avoid modifying the original buffer in place if needed
         # vis_frame = frame.copy()
