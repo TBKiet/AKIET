@@ -6,8 +6,15 @@ import sys
 import os
 
 # CRITICAL: Handle Qt plugin conflicts BEFORE importing anything
+# Force Qt to NOT look in cv2/qt/plugins
 if "QT_QPA_PLATFORM_PLUGIN_PATH" in os.environ:
     del os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"]
+
+# Also remove QT_PLUGIN_PATH if it points to cv2
+if "QT_PLUGIN_PATH" in os.environ:
+    plugin_path = os.environ["QT_PLUGIN_PATH"]
+    if "cv2" in plugin_path:
+        del os.environ["QT_PLUGIN_PATH"]
 
 # Import PyQt5 FIRST, before OpenCV and numpy
 from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow
@@ -17,6 +24,13 @@ from PyQt5.QtCore import Qt
 # Now import OpenCV and numpy
 import cv2
 import numpy as np
+
+print("Qt Plugin Path:", QApplication.libraryPaths())
+print("OpenCV build info (Qt section):")
+build_info = cv2.getBuildInformation()
+for line in build_info.split('\n'):
+    if 'Qt' in line or 'GUI' in line:
+        print(f"  {line}")
 
 def main():
     app = QApplication(sys.argv)
