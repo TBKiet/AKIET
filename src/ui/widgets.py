@@ -14,15 +14,21 @@ class CameraWidget(QLabel):
         self.setStyleSheet("background-color: black;")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter if hasattr(Qt, 'AlignmentFlag') else Qt.AlignCenter)
         self.setText("Waiting for Camera...")
+        self._frame_count = 0
 
     def update_frame(self, frame_bgr):
         """
         Updates the displayed image from an OpenCV BGR frame.
         """
         if frame_bgr is None or frame_bgr.size == 0:
+            print("Warning: update_frame received None or empty frame")
             return
 
         try:
+            self._frame_count += 1
+            if self._frame_count % 30 == 1:
+                print(f"CameraWidget.update_frame called: frame {self._frame_count}, shape={frame_bgr.shape}")
+
             # Convert BGR to RGB
             frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
             h, w, ch = frame_rgb.shape
@@ -34,14 +40,31 @@ class CameraWidget(QLabel):
             # Create QImage with explicit copy
             q_img = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888).copy()
 
+            if self._frame_count % 30 == 1:
+                print(f"  QImage created: size={q_img.size()}, isNull={q_img.isNull()}")
+
             # Scale to fit widget while keeping aspect ratio
             pixmap = QPixmap.fromImage(q_img)
+
+            if self._frame_count % 30 == 1:
+                print(f"  Pixmap created: size={pixmap.size()}, isNull={pixmap.isNull()}")
+                print(f"  Widget size: {self.size()}")
+
             scaled_pixmap = pixmap.scaled(
                 self.size(),
                 Qt.AspectRatioMode.KeepAspectRatio if hasattr(Qt, 'AspectRatioMode') else Qt.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation if hasattr(Qt, 'TransformationMode') else Qt.SmoothTransformation
             )
+
+            if self._frame_count % 30 == 1:
+                print(f"  Scaled pixmap: size={scaled_pixmap.size()}")
+
             self.setPixmap(scaled_pixmap)
+
+            # Clear the text overlay on first successful frame
+            if self._frame_count == 1:
+                self.setText("")
+
         except Exception as e:
             print(f"Error updating frame: {e}")
 
