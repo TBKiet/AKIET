@@ -25,6 +25,10 @@ class CameraWidget(QLabel):
             return
 
         try:
+            # Clear text on first frame BEFORE setting pixmap
+            if self._frame_count == 0:
+                self.setText("")
+
             self._frame_count += 1
             if self._frame_count % 30 == 1:
                 print(f"CameraWidget.update_frame called: frame {self._frame_count}, shape={frame_bgr.shape}")
@@ -58,12 +62,13 @@ class CameraWidget(QLabel):
 
             if self._frame_count % 30 == 1:
                 print(f"  Scaled pixmap: size={scaled_pixmap.size()}")
+                print(f"  Setting pixmap...")
 
             self.setPixmap(scaled_pixmap)
 
-            # Clear the text overlay on first successful frame
             if self._frame_count == 1:
-                self.setText("")
+                print(f"  First frame set! Pixmap in label: {not self.pixmap().isNull() if self.pixmap() else 'None'}")
+                print(f"  Text in label: '{self.text()}'")
 
         except Exception as e:
             print(f"Error updating frame: {e}")
