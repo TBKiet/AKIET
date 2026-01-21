@@ -32,8 +32,12 @@ class MainWindow(QMainWindow):
         # UI Setup
         self._setup_ui()
 
-        # Signals
-        self.camera.frame_received.connect(self._process_frame)
+        # Signals - Use Qt.QueuedConnection for thread-safe signal handling
+        from PyQt5.QtCore import Qt as QtCore
+        self.camera.frame_received.connect(
+            self._process_frame,
+            type=QtCore.ConnectionType.QueuedConnection if hasattr(QtCore, 'ConnectionType') else QtCore.QueuedConnection
+        )
 
         # Timer for robot animation
         self.anim_timer = QTimer()

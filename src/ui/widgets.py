@@ -66,9 +66,14 @@ class CameraWidget(QLabel):
 
             self.setPixmap(scaled_pixmap)
 
+            # Force Qt to repaint the widget
+            self.update()
+            self.repaint()
+
             if self._frame_count == 1:
                 print(f"  First frame set! Pixmap in label: {not self.pixmap().isNull() if self.pixmap() else 'None'}")
                 print(f"  Text in label: '{self.text()}'")
+                print(f"  Called update() and repaint()")
 
         except Exception as e:
             print(f"Error updating frame: {e}")
