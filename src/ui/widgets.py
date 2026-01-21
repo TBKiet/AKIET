@@ -19,20 +19,31 @@ class CameraWidget(QLabel):
         """
         Updates the displayed image from an OpenCV BGR frame.
         """
-        if frame_bgr is None:
+        if frame_bgr is None or frame_bgr.size == 0:
             return
 
-        # Convert BGR to RGB
-        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        h, w, ch = frame_rgb.shape
-        bytes_per_line = frame_rgb.strides[0]
+        try:
+            # Convert BGR to RGB
+            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            h, w, ch = frame_rgb.shape
 
-        # Create QImage
-        q_img = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
+            # Important: Copy the data to avoid memory issues
+            frame_rgb = np.ascontiguousarray(frame_rgb)
+            bytes_per_line = ch * w
 
-        # Scale to fit widget
-        pixmap = QPixmap.fromImage(q_img)
-        self.setPixmap(pixmap.scaled(self.size(), Qt.KeepAspectRatio))
+            # Create QImage with explicit copy
+            q_img = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888).copy()
+
+            # Scale to fit widget while keeping aspect ratio
+            pixmap = QPixmap.fromImage(q_img)
+            scaled_pixmap = pixmap.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatio if hasattr(Qt, 'AspectRatioMode') else Qt.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation if hasattr(Qt, 'TransformationMode') else Qt.SmoothTransformation
+            )
+            self.setPixmap(scaled_pixmap)
+        except Exception as e:
+            print(f"Error updating frame: {e}")
 
 class SimulationWidget(QWidget):
     """

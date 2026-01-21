@@ -99,6 +99,13 @@ class MainWindow(QMainWindow):
         """
         Main loop logic: Detect -> Measure -> Draw -> Display
         """
+        # Debug: print frame info
+        if not hasattr(self, '_frame_count'):
+            self._frame_count = 0
+        self._frame_count += 1
+        if self._frame_count % 30 == 1:  # Print every 30 frames
+            print(f"Processing frame {self._frame_count}: shape={frame.shape}, dtype={frame.dtype}")
+
         # copy frame to avoid modifying the original buffer in place if needed
         vis_frame = frame.copy()
 
