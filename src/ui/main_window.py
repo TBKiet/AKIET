@@ -118,9 +118,28 @@ class MainWindow(QMainWindow):
         self._frame_count += 1
         if self._frame_count % 30 == 1:  # Print every 30 frames
             print(f"Processing frame {self._frame_count}: shape={frame.shape}, dtype={frame.dtype}")
+            print(f"  Frame min/max values: {frame.min()}/{frame.max()}")
+            print(f"  Frame first pixel: {frame[0,0]}")
 
-        # copy frame to avoid modifying the original buffer in place if needed
+        # BYPASS DETECTOR FOR NOW - just show raw frame
         vis_frame = frame.copy()
+
+        # Add debug text to show it's working
+        cv2.putText(vis_frame, "CAMERA FEED WORKING!", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+        cv2.putText(vis_frame, f"Frame {self._frame_count}", (10, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+        # Update Widget - bypass all detection for now
+        self.camera_widget.update_frame(vis_frame)
+
+        # Update Stats
+        self.lbl_stats.setText(f"Status: Running | Frame: {self._frame_count}")
+        return  # EARLY RETURN TO BYPASS DETECTION
+
+        # === ORIGINAL CODE BELOW (DISABLED FOR DEBUG) ===
+        # copy frame to avoid modifying the original buffer in place if needed
+        # vis_frame = frame.copy()
 
         # 1. Detect Circles
         circles = self.detector.detect(frame)
