@@ -20,7 +20,7 @@ class MainWindow(QMainWindow):
         self.resize(1200, 700)
 
         # Initialize Core Modules
-        self.camera = Camera(640,480) # Default camera
+        self.camera = Camera(480, 360, 60)  # Optimized: 480x360@60fps
         self.detector = YOLODetector()
         self.calibration = CalibrationManager(scale_factor=1.0) # Default 1mm/px (needs calib)
         self.planner = PathPlanner()
@@ -34,11 +34,7 @@ class MainWindow(QMainWindow):
         self._setup_ui()
 
         # Signals - Use Qt.QueuedConnection for thread-safe signal handling
-        from PyQt5.QtCore import Qt as QtCore
-        self.camera.frame_received.connect(
-            self._process_frame,
-            type=QtCore.ConnectionType.QueuedConnection if hasattr(QtCore, 'ConnectionType') else QtCore.QueuedConnection
-        )
+        self.camera.frame_received.connect(self._process_frame, Qt.QueuedConnection)
 
         # Timer for robot animation
         self.anim_timer = QTimer()

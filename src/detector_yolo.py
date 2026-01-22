@@ -15,9 +15,17 @@ from pathlib import Path
 
 try:
     from ultralytics import YOLO
+    import torch
     YOLO_AVAILABLE = True
+    # Check CUDA availability
+    CUDA_AVAILABLE = torch.cuda.is_available()
+    if CUDA_AVAILABLE:
+        print(f"✓ CUDA available: {torch.cuda.get_device_name(0)}")
+    else:
+        print("⚠ CUDA not available, using CPU (slower)")
 except ImportError:
     YOLO_AVAILABLE = False
+    CUDA_AVAILABLE = False
     print("Warning: ultralytics not installed. Install with: pip install ultralytics")
 
 
@@ -39,8 +47,9 @@ class YOLODetector:
 
         self.conf_threshold = conf_threshold
         self.model = None
-        self.use_tensorrt = use_tensorrt
+        self.use_tensorrt = use_tensorrt and CUDA_AVAILABLE  # Only use TensorRT if CUDA available
         self.model_path = model_path
+        self.device = 0 if CUDA_AVAILABLE else 'cpu'
 
         # Performance tracking
         self.inference_times = []
@@ -132,7 +141,7 @@ class YOLODetector:
             conf=self.conf_threshold,
             iou=0.45,
             verbose=False,
-            device=0  # Use GPU
+            device=self.device  # Use GPU if available, else CPU
         )
 
         # Track inference time
