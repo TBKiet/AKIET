@@ -7,8 +7,8 @@ from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QColor
 
 from src.camera import Camera
-# from src.detector import CircleDetector
-from src.detector_yolo import YOLODetector
+from src.detector import CircleDetector  # Use Hough Circle - fast on CPU
+# from src.detector_yolo import YOLODetector  # Requires GPU
 from src.calibration import CalibrationManager
 from src.classifier import Classifier
 from src.planner import PathPlanner
@@ -23,13 +23,9 @@ class MainWindow(QMainWindow):
         # Initialize Core Modules
         self.camera = Camera(480, 360, 60)  # Optimized: 480x360@60fps
         
-        # Try to load detector (may be slow on CPU)
-        try:
-            self.detector = YOLODetector()
-            print("✓ YOLODetector loaded")
-        except Exception as e:
-            print(f"✗ Failed to load detector: {e}")
-            self.detector = None
+        # Use Hough Circle Detector (CPU-friendly, fast)
+        self.detector = CircleDetector()
+        print("✓ Hough Circle Detector loaded (CPU-optimized)")
             
         self.calibration = CalibrationManager(scale_factor=1.0) # Default 1mm/px (needs calib)
         self.planner = PathPlanner()
@@ -133,46 +129,41 @@ class MainWindow(QMainWindow):
 
         vis_frame = frame.copy()
 
-        # Try detection if available
-        if self.detector:
-            try:
-                # 1. Detect Circles
-                circles = self.detector.detect(frame)
+        # Hough Circle Detection (fast on CPU)
+        try:
+            # 1. Detect Circles
+            circles = self.detector.detect(frame)
 
-                # 2. Process Detections
-                self.detected_objects = []
-                
-                for (x, y, radius) in circles:
-                    # Measure
-                    radius_mm = self.calibration.pixel_to_mm(radius)
-                    size_class = self.classifier.classify(radius_mm)
+            # 2. Process Detections
+            self.detected_objects = []
+            
+            for (x, y, radius) in circles:
+                # Measure
+                radius_mm = self.calibration.pixel_to_mm(radius)
+                size_class = self.classifier.classify(radius_mm)
 
-                    # Store
-                    obj = {
-                        'x': x, 'y': y, 'radius_px': radius,
-                        'radius_mm': radius_mm, 'class': size_class
-                    }
-                    self.detected_objects.append(obj)
+                # Store
+                obj = {
+                    'x': x, 'y': y, 'radius_px': radius,
+                    'radius_mm': radius_mm, 'class': size_class
+                }
+                self.detected_objects.append(obj)
 
-                    # Draw on Camera Frame
-                    cv2.circle(vis_frame, (x, y), radius, (0, 255, 0), 2)
-                    cv2.circle(vis_frame, (x, y), 2, (0, 0, 255), 3)
-                    text = f"{size_class} ({radius_mm:.1f}mm)"
-                    cv2.putText(vis_frame, text, (x - 20, y - 20),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
-                
-                # Show detection count
-                cv2.putText(vis_frame, f"Detected: {len(circles)}", (10, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                
-            except Exception as e:
-                # If detection fails, show error but continue
-                cv2.putText(vis_frame, f"Detection Error: {str(e)[:30]}", (10, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-        else:
-            # No detector available
-            cv2.putText(vis_frame, "RAW CAMERA FEED (No Detector)", (10, 30),
+                # Draw on Camera Frame
+                cv2.circle(vis_frame, (x, y), radius, (0, 255, 0), 2)
+                cv2.circle(vis_frame, (x, y), 2, (0, 0, 255), 3)
+                text = f"{size_class} ({radius_mm:.1f}mm)"
+                cv2.putText(vis_frame, text, (x - 20, y - 20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            
+            # Show detection count
+            cv2.putText(vis_frame, f"Detected: {len(circles)}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            
+        except Exception as e:
+            # If detection fails, show error but continue
+            cv2.putText(vis_frame, f"Error: {str(e)[:30]}", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
 
         cv2.putText(vis_frame, f"Frame {self._frame_count}", (10, 60),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
