@@ -19,7 +19,7 @@ class MainWindow(QMainWindow):
         self.resize(1200, 700)
 
         # Initialize Core Modules
-        self.camera = Camera(0) # Default camera
+        self.camera = Camera(640,480) # Default camera
         self.detector = CircleDetector()
         self.calibration = CalibrationManager(scale_factor=1.0) # Default 1mm/px (needs calib)
         self.planner = PathPlanner()
