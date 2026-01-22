@@ -195,6 +195,7 @@ class MainWindow(QMainWindow):
 
         # Update Stats
         self.lbl_stats.setText(f"Status: Running | Detected: {len(circles)}")
+        """
 
     def _calibrate(self):
         """
