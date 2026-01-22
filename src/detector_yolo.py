@@ -97,7 +97,20 @@ class YOLODetector:
                 if engine_path.exists():
                     print("Loading existing TensorRT engine...")
                     self.model = YOLO(str(engine_path))
-                    print("✓ Us using YOLO + circularity filtering
+                    print("✓ Using TensorRT engine")
+                else:
+                    print("Converting to TensorRT (first time, ~1-2 minutes)...")
+                    self.model.export(format='engine', device=0, half=True)
+                    print("✓ TensorRT engine created")
+            except Exception as e:
+                print(f"TensorRT conversion failed: {e}")
+                print("Using standard PyTorch model")
+
+        print("✓ Using YOLO + circularity filtering for disc detection")
+
+    def detect(self, image):
+        """
+        Detect circles using YOLO + circularity filtering
 
         Args:
             image: BGR image (numpy array)
@@ -159,19 +172,7 @@ class YOLODetector:
 
                         # Additional check: minimum size filter
                         if radius >= 15:  # Same as Hough minRadius
-                            detected_circles.append((center_x, center_y, radius)
-                    x1, y1, x2, y2 = box.xyxy[0]
-                    conf = box.conf[0]
-
-                    if conf < self.conf_threshold:
-                        continue
-
-                    # Calculate circle from bounding box
-                    center_x = int((x1 + x2) / 2)
-                    center_y = int((y1 + y2) / 2)
-                    radius = int(max(x2 - x1, y2 - y1) / 2)
-
-                    detected_circles.append((center_x, center_y, radius))
+                            detected_circles.append((center_x, center_y, radius))
 
             # If segmentation model, use masks for better circle fitting
             if hasattr(result, 'masks') and result.masks is not None:

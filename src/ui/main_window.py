@@ -6,7 +6,8 @@ from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QColor
 
 from src.camera import Camera
-from src.detector import CircleDetector
+# from src.detector import CircleDetector
+from src.detector_yolo import YOLODetector
 from src.calibration import CalibrationManager
 from src.classifier import Classifier
 from src.planner import PathPlanner
@@ -20,7 +21,7 @@ class MainWindow(QMainWindow):
 
         # Initialize Core Modules
         self.camera = Camera(640,480) # Default camera
-        self.detector = CircleDetector()
+        self.detector = YOLODetector()
         self.calibration = CalibrationManager(scale_factor=1.0) # Default 1mm/px (needs calib)
         self.planner = PathPlanner()
         self.classifier = Classifier()
