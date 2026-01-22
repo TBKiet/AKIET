@@ -18,7 +18,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("CV & Robot Sim")  # Shorter title
-        self.resize(640, 360)  # Compact size for small embedded display
+        self.resize(320, 180)  # Very compact for tiny display
 
         # Initialize Core Modules
         self.camera = Camera(480, 360, 60)  # Optimized: 480x360@60fps
