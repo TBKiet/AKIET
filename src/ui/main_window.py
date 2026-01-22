@@ -18,7 +18,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Project Innovation: Computer Vision & Robot Simulation")
-        self.resize(1200, 700)
+        self.resize(800, 480)  # Smaller size for Jetson display
 
         # Initialize Core Modules
         self.camera = Camera(480, 360, 60)  # Optimized: 480x360@60fps
