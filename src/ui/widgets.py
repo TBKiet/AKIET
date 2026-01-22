@@ -10,73 +10,46 @@ class CameraWidget(QLabel):
     """
     def __init__(self):
         super().__init__()
-        self.setMinimumSize(640, 480)
-        self.setMaximumSize(1920, 1080)  # Set max size to prevent over-stretching
-        # Use magenta to make it obvious if pixmap is not showing
-        self.setStyleSheet("background-color: magenta; border: 3px solid red;")
+        self.setMinimumSize(320, 240)  # Smaller for tiny display
+        self.setStyleSheet("background-color: black;")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter if hasattr(Qt, 'AlignmentFlag') else Qt.AlignCenter)
         self.setText("Waiting for Camera...")
-        self.setScaledContents(False)  # Don't auto-scale, we'll do it manually
-        self._frame_count = 0
+        self.setScaledContents(False)
 
     def update_frame(self, frame_bgr):
         """
         Updates the displayed image from an OpenCV BGR frame.
+        Simplified to avoid memory corruption.
         """
         if frame_bgr is None or frame_bgr.size == 0:
-            print("Warning: update_frame received None or empty frame")
             return
 
         try:
-            # Clear text on first frame BEFORE setting pixmap
-            if self._frame_count == 0:
+            # Clear text on first frame
+            if self.text():
                 self.setText("")
-
-            self._frame_count += 1
-            if self._frame_count % 30 == 1:
-                print(f"CameraWidget.update_frame called: frame {self._frame_count}, shape={frame_bgr.shape}")
 
             # Convert BGR to RGB
             frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
             h, w, ch = frame_rgb.shape
-
-            # Important: Copy the data to avoid memory issues
-            frame_rgb = np.ascontiguousarray(frame_rgb)
             bytes_per_line = ch * w
 
             # Create QImage with explicit copy
             q_img = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888).copy()
-
-            if self._frame_count % 30 == 1:
-                print(f"  QImage created: size={q_img.size()}, isNull={q_img.isNull()}")
-
-            # Scale to fit widget while keeping aspect ratio
+            
+            # Create pixmap without scaling (faster, safer)
             pixmap = QPixmap.fromImage(q_img)
+            
+            # Simple scale to fit
+            if pixmap.width() > self.width() or pixmap.height() > self.height():
+                pixmap = pixmap.scaled(
+                    self.size(),
+                    Qt.AspectRatioMode.KeepAspectRatio if hasattr(Qt, 'AspectRatioMode') else Qt.KeepAspectRatio,
+                    Qt.TransformationMode.FastTransformation if hasattr(Qt, 'TransformationMode') else Qt.FastTransformation  # Fast, not smooth
+                )
 
-            if self._frame_count % 30 == 1:
-                print(f"  Pixmap created: size={pixmap.size()}, isNull={pixmap.isNull()}")
-                print(f"  Widget size: {self.size()}")
-
-            scaled_pixmap = pixmap.scaled(
-                self.size(),
-                Qt.AspectRatioMode.KeepAspectRatio if hasattr(Qt, 'AspectRatioMode') else Qt.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation if hasattr(Qt, 'TransformationMode') else Qt.SmoothTransformation
-            )
-
-            if self._frame_count % 30 == 1:
-                print(f"  Scaled pixmap: size={scaled_pixmap.size()}")
-                print(f"  Setting pixmap...")
-
-            self.setPixmap(scaled_pixmap)
-
-            # Force Qt to repaint the widget
-            self.update()
-            self.repaint()
-
-            if self._frame_count == 1:
-                print(f"  First frame set! Pixmap in label: {not self.pixmap().isNull() if self.pixmap() else 'None'}")
-                print(f"  Text in label: '{self.text()}'")
-                print(f"  Called update() and repaint()")
+            self.setPixmap(pixmap)
+            self.update()  # Single update, no repaint()
 
         except Exception as e:
             print(f"Error updating frame: {e}")
