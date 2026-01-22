@@ -22,11 +22,11 @@ class MainWindow(QMainWindow):
 
         # Initialize Core Modules
         self.camera = Camera(480, 360, 60)  # Optimized: 480x360@60fps
-        
+
         # Use Hough Circle Detector (CPU-friendly, fast)
         self.detector = CircleDetector()
         print("✓ Hough Circle Detector loaded (CPU-optimized)")
-            
+
         self.calibration = CalibrationManager(scale_factor=1.0) # Default 1mm/px (needs calib)
         self.planner = PathPlanner()
         self.classifier = Classifier()
@@ -136,7 +136,7 @@ class MainWindow(QMainWindow):
 
             # 2. Process Detections
             self.detected_objects = []
-            
+
             for (x, y, radius) in circles:
                 # Measure
                 radius_mm = self.calibration.pixel_to_mm(radius)
@@ -155,11 +155,11 @@ class MainWindow(QMainWindow):
                 text = f"{size_class} ({radius_mm:.1f}mm)"
                 cv2.putText(vis_frame, text, (x - 20, y - 20),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
-            
+
             # Show detection count
             cv2.putText(vis_frame, f"Detected: {len(circles)}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-            
+
         except Exception as e:
             # If detection fails, show error but continue
             cv2.putText(vis_frame, f"Error: {str(e)[:30]}", (10, 30),

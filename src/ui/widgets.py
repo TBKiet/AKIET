@@ -36,10 +36,10 @@ class CameraWidget(QLabel):
 
             # Create QImage with explicit copy
             q_img = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888).copy()
-            
+
             # Create pixmap without scaling (faster, safer)
             pixmap = QPixmap.fromImage(q_img)
-            
+
             # Simple scale to fit
             if pixmap.width() > self.width() or pixmap.height() > self.height():
                 pixmap = pixmap.scaled(
