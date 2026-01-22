@@ -70,20 +70,24 @@ class Camera(QObject):
             self.gst_process = None
 
     def _capture_loop(self):
-        frame_size = self.width * self.height * 3
+        frame_size = self.width * self.height * 3  # BGR = 3 bytes per pixel
 
         while self.running and self.gst_process:
             try:
+                # Read exact frame size
                 data = self.gst_process.stdout.read(frame_size)
 
                 if len(data) != frame_size:
                     if not self.running:
                         break
+                    print(f"Warning: incomplete frame, got {len(data)} bytes, expected {frame_size}")
                     continue
 
-                frame = np.frombuffer(data, dtype=np.uint8).reshape((self.height, self.width, 3))
+                # Safely create frame copy
+                frame = np.frombuffer(data, dtype=np.uint8).reshape((self.height, self.width, 3)).copy()
                 self.frame_count += 1
 
+                # Emit copy to avoid memory corruption
                 self.frame_received.emit(frame)
 
             except Exception as e:
