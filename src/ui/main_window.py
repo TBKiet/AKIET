@@ -22,8 +22,15 @@ class MainWindow(QMainWindow):
 
         # Initialize Core Modules
         self.camera = Camera(480, 360, 60)  # Optimized: 480x360@60fps
-        # self.detector = YOLODetector()  # Disabled - requires CUDA
-        self.detector = None  # Will enable when CUDA is available
+        
+        # Try to load detector (may be slow on CPU)
+        try:
+            self.detector = YOLODetector()
+            print("✓ YOLODetector loaded")
+        except Exception as e:
+            print(f"✗ Failed to load detector: {e}")
+            self.detector = None
+            
         self.calibration = CalibrationManager(scale_factor=1.0) # Default 1mm/px (needs calib)
         self.planner = PathPlanner()
         self.classifier = Classifier()
@@ -124,79 +131,54 @@ class MainWindow(QMainWindow):
             print(f"FPS: {fps:.1f}")
             self._last_fps_time = time.time()
 
-        # TEMPORARY: Bypass detector to test camera speed
-        # Detector on CPU is too slow (~2-5 FPS)
         vis_frame = frame.copy()
-        cv2.putText(vis_frame, "RAW CAMERA FEED", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+
+        # Try detection if available
+        if self.detector:
+            try:
+                # 1. Detect Circles
+                circles = self.detector.detect(frame)
+
+                # 2. Process Detections
+                self.detected_objects = []
+                
+                for (x, y, radius) in circles:
+                    # Measure
+                    radius_mm = self.calibration.pixel_to_mm(radius)
+                    size_class = self.classifier.classify(radius_mm)
+
+                    # Store
+                    obj = {
+                        'x': x, 'y': y, 'radius_px': radius,
+                        'radius_mm': radius_mm, 'class': size_class
+                    }
+                    self.detected_objects.append(obj)
+
+                    # Draw on Camera Frame
+                    cv2.circle(vis_frame, (x, y), radius, (0, 255, 0), 2)
+                    cv2.circle(vis_frame, (x, y), 2, (0, 0, 255), 3)
+                    text = f"{size_class} ({radius_mm:.1f}mm)"
+                    cv2.putText(vis_frame, text, (x - 20, y - 20),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                
+                # Show detection count
+                cv2.putText(vis_frame, f"Detected: {len(circles)}", (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                
+            except Exception as e:
+                # If detection fails, show error but continue
+                cv2.putText(vis_frame, f"Detection Error: {str(e)[:30]}", (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        else:
+            # No detector available
+            cv2.putText(vis_frame, "RAW CAMERA FEED (No Detector)", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
         cv2.putText(vis_frame, f"Frame {self._frame_count}", (10, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         # Update UI
         self.camera_widget.update_frame(vis_frame)
-        return
-
-        # === DETECTOR CODE (DISABLED - TOO SLOW ON CPU) ===
-        # Uncomment when PyTorch with CUDA is installed
-        """
-        # copy frame to avoid modifying the original buffer in place if needed
-        vis_frame = frame.copy()
-
-        # 1. Detect Circles
-        circles = self.detector.detect(frame)
-
-        # 2. Process Detections
-        self.detected_objects = []
-        sim_discs = []
-
-        for (x, y, radius) in circles:
-            # Measure
-            radius_mm = self.calibration.pixel_to_mm(radius)
-            size_class = self.classifier.classify(radius_mm)
-
-            # Store
-            obj = {
-                'x': x, 'y': y, 'radius_px': radius,
-                'radius_mm': radius_mm, 'class': size_class
-            }
-            self.detected_objects.append(obj)
-
-            # Draw on Camera Frame
-            # Green circle
-            cv2.circle(vis_frame, (x, y), radius, (0, 255, 0), 2)
-            # Center point
-            cv2.circle(vis_frame, (x, y), 2, (0, 0, 255), 3)
-            # Text info
-            text = f"{size_class} ({radius_mm:.1f}mm)"
-            cv2.putText(vis_frame, text, (x - 20, y - 20),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-
-            # Prepare data for simulation (mapping visualization)
-            # Important: Map camera coordinates to simulation canvas if sizes differ
-            # For now assume direct mapping but scale if needed
-
-            # Color logic based on new classes
-            if "Medium" in size_class:
-                color = QColor("yellow")
-            elif "Small" in size_class:
-                color = QColor("red")
-            else:
-                color = QColor("green")
-
-            sim_discs.append({
-                'x': x // 2 + 50, # Simple mapping offset
-                'y': y // 2,
-                'radius': radius // 2, # Scale down for potential resolution diff
-                'color': color
-            })
-
-        # Update Widgets
-        self.camera_widget.update_frame(vis_frame)
-        self.sim_widget.set_discs(sim_discs)
-
-        # Update Stats
-        self.lbl_stats.setText(f"Status: Running | Detected: {len(circles)}")
-        """
 
     def _calibrate(self):
         """
