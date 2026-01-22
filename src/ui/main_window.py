@@ -22,7 +22,8 @@ class MainWindow(QMainWindow):
 
         # Initialize Core Modules
         self.camera = Camera(480, 360, 60)  # Optimized: 480x360@60fps
-        self.detector = YOLODetector()
+        # self.detector = YOLODetector()  # Disabled - requires CUDA
+        self.detector = None  # Will enable when CUDA is available
         self.calibration = CalibrationManager(scale_factor=1.0) # Default 1mm/px (needs calib)
         self.planner = PathPlanner()
         self.classifier = Classifier()
