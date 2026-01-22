@@ -17,8 +17,8 @@ from src.ui.widgets import CameraWidget, SimulationWidget
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Project Innovation: Computer Vision & Robot Simulation")
-        self.resize(800, 480)  # Smaller size for Jetson display
+        self.setWindowTitle("CV & Robot Sim")  # Shorter title
+        self.resize(640, 360)  # Compact size for small embedded display
 
         # Initialize Core Modules
         self.camera = Camera(480, 360, 60)  # Optimized: 480x360@60fps
