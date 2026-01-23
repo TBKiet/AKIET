@@ -87,7 +87,14 @@ class SimulationWidget(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # Fix Qt compatibility
+        try:
+            painter.setRenderHint(QPainter.Antialiasing)
+        except:
+            try:
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            except:
+                pass  # Skip if not available
 
         # Draw Coordinate Grid
         self._draw_grid(painter)

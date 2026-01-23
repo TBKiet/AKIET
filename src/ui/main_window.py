@@ -34,10 +34,11 @@ class MainWindow(QMainWindow):
         self.camera = Camera(480, 360, 60)  # Optimized: 480x360@60fps
 
         # Choose detector based on availability and user preference
-        # Set USE_YOLO = True to use YOLO detector (GPU required)
-        USE_YOLO = False  # Tắt YOLO để test camera
-
-        if USE_YOLO and YOLO_AVAILABLE:
+        # TEMPORARY: Force use Hough detector for testing
+        USE_YOLO = False
+        YOLO_AVAILABLE = False  # Force disable
+        
+        if False:  # Disabled for now
             try:
                 print("Loading YOLOv5 detector (GPU)...")
                 self.detector = YOLODetector(conf_threshold=0.5)
