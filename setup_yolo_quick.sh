@@ -1,8 +1,8 @@
 #!/bin/bash
-# Quick setup for YOLOv8 with pretrained model
+# Quick setup for YOLOv5 with pretrained model
 
 echo "=========================================="
-echo "YOLOv8 Real-time Setup (5 minutes)"
+echo "YOLOv5 Real-time Setup (5 minutes)"
 echo "=========================================="
 
 # Check conda
@@ -12,35 +12,46 @@ if [ -z "$CONDA_DEFAULT_ENV" ]; then
 fi
 
 echo ""
-echo "📦 Step 1: Installing ultralytics..."
-pip install ultralytics torch torchvision
+echo "📦 Step 1: Cloning YOLOv5 and installing dependencies..."
+if [ ! -d "yolov5" ]; then
+    git clone https://github.com/ultralytics/yolov5
+    cd yolov5
+    pip install -r requirements.txt
+    cd ..
+    echo "✓ YOLOv5 cloned and installed"
+else
+    echo "✓ YOLOv5 directory already exists"
+fi
 
 echo ""
-echo "📥 Step 2: Downloading YOLOv8n pretrained model..."
+echo "📥 Step 2: Downloading YOLOv5n pretrained model..."
 python3 << 'EOF'
-from ultralytics import YOLO
-print("Downloading YOLOv8n (~6MB)...")
-model = YOLO('yolov8n.pt')
-print("✓ Downloaded: yolov8n.pt")
+import torch
+import sys
+sys.path.insert(0, 'yolov5')
+from models.common import DetectMultiBackend
+
+print("Downloading YOLOv5n (~4MB)...")
+device = '0' if torch.cuda.is_available() else 'cpu'
+model = DetectMultiBackend('yolov5n.pt', device=device)
+print("✓ Downloaded: yolov5n.pt")
 EOF
 
 echo ""
-echo "⚡ Step 3: Converting to TensorRT (~2 minutes)..."
-echo "This creates yolov8n.engine for 3-5x speedup"
+echo "⚡ Step 3: TensorRT conversion (optional)..."
+echo "To convert to TensorRT for 3-5x speedup, run:"
+echo "  cd yolov5 && python export.py --weights yolov5n.pt --include engine --device 0 --half"
 python3 << 'EOF'
-from ultralytics import YOLO
+import sys
+sys.path.insert(0, '.')
+from src.detector_yolo import YOLODetector
+import numpy as np
+import cv2
 import torch
-
 if torch.cuda.is_available():
     print(f"GPU: {torch.cuda.get_device_name(0)}")
-    model = YOLO('yolov8n.pt')
-    print("Converting to TensorRT FP16...")
-    try:
-        model.export(format='engine', device=0, half=True, imgsz=480)
-        print("✓ TensorRT engine created: yolov8n.engine")
-    except Exception as e:
-        print(f"⚠ TensorRT export failed: {e}")
-        print("Will use PyTorch model (slower)")
+    print("For TensorRT conversion, run:")
+    print("  cd yolov5 && python export.py --weights yolov5n.pt --include engine --device 0 --half")
 else:
     print("⚠ CUDA not available, skipping TensorRT")
 EOF
@@ -54,8 +65,8 @@ from src.detector_yolo import YOLODetector
 import numpy as np
 import cv2
 
-print("\nTesting YOLO detector...")
-detector = YOLODetector(use_tensorrt=True)
+print("\nTesting YOLOv5 detector...")
+detector = YOLODetector(use_tensorrt=False)
 
 # Create test image with circles
 img = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -82,7 +93,9 @@ echo "=========================================="
 echo "✅ Setup Complete!"
 echo "=========================================="
 echo ""
-echo "Next: Update main_window.py"
+echo "YOLOv5 is now configured!"
+echo ""
+echo "Next: Update main_window.py if needed"
 echo ""
 echo "Change these 2 lines:"
 echo "  FROM: from src.detector_optimized import CircleDetector"
@@ -93,7 +106,7 @@ echo "    TO: self.detector = YOLODetector()"
 echo ""
 echo "Then run: python3 src/main.py"
 echo ""
-echo "Expected FPS:"
-echo "  - Jetson Nano: 30-50 FPS"
-echo "  - Jetson Xavier: 60-80 FPS"
+echo "Expected FPS with YOLOv5:"
+echo "  - Jetson Nano: 25-40 FPS (PyTorch), 40-60 FPS (TensorRT)"
+echo "  - Jetson Xavier: 50-70 FPS (PyTorch), 80-120 FPS (TensorRT)"
 echo ""

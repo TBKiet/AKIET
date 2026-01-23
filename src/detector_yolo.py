@@ -1,55 +1,81 @@
 """
-YOLOv8-Nano detector optimized for Jetson with TensorRT
+YOLOv5 detector optimized for Jetson with TensorRT
 Ultra-fast real-time circle/disc detection
 
 Requirements:
-- ultralytics (pip install ultralytics)
+- torch, torchvision (install via pip or JetPack)
+- YOLOv5 (clone from https://github.com/ultralytics/yolov5)
 - TensorRT (comes with JetPack)
 
-Performance: 40-80 FPS on Jetson Nano
+Setup:
+    git clone https://github.com/ultralytics/yolov5
+    cd yolov5
+    pip install -r requirements.txt
+
+Performance: 40-80 FPS on Jetson Nano with YOLOv5s
 """
 
 import numpy as np
 import time
 from pathlib import Path
+import sys
+import os
+
+# Add YOLOv5 to path if needed
+YOLOV5_PATH = os.path.join(os.path.dirname(__file__), '..', 'yolov5')
+if os.path.exists(YOLOV5_PATH) and YOLOV5_PATH not in sys.path:
+    sys.path.insert(0, YOLOV5_PATH)
 
 try:
-    from ultralytics import YOLO
     import torch
-    YOLO_AVAILABLE = True
-    # Check CUDA availability
-    CUDA_AVAILABLE = torch.cuda.is_available()
-    if CUDA_AVAILABLE:
+    TORCH_AVAILABLE = torch.cuda.is_available()
+    if TORCH_AVAILABLE:
         print(f"✓ CUDA available: {torch.cuda.get_device_name(0)}")
     else:
         print("⚠ CUDA not available, using CPU (slower)")
+    
+    # Try to import YOLOv5
+    try:
+        # Import YOLOv5 models
+        from models.common import DetectMultiBackend
+        from utils.general import non_max_suppression, scale_boxes
+        from utils.torch_utils import select_device
+        from utils.augmentations import letterbox
+        YOLO_AVAILABLE = True
+        print("✓ YOLOv5 imported successfully")
+    except ImportError as e:
+        print(f"YOLOv5 import error: {e}")
+        print("Please clone YOLOv5: git clone https://github.com/ultralytics/yolov5")
+        YOLO_AVAILABLE = False
+        
 except ImportError:
+    TORCH_AVAILABLE = False
     YOLO_AVAILABLE = False
-    CUDA_AVAILABLE = False
-    print("Warning: ultralytics not installed. Install with: pip install ultralytics")
+    print("Warning: torch not installed. Install with: pip install torch torchvision")
 
 
 class YOLODetector:
     """
-    YOLO-based circle detector with TensorRT optimization
+    YOLOv5-based circle detector with TensorRT optimization
     """
     def __init__(self, model_path=None, use_tensorrt=True, conf_threshold=0.5):
         """
-        Initialize YOLO detector
+        Initialize YOLOv5 detector
 
         Args:
-            model_path: Path to YOLO model (.pt or .engine)
+            model_path: Path to YOLOv5 model (.pt or .engine)
             use_tensorrt: Convert to TensorRT for speed boost
             conf_threshold: Detection confidence threshold
         """
         if not YOLO_AVAILABLE:
-            raise ImportError("ultralytics not installed")
+            raise ImportError("YOLOv5 not available. Please clone: git clone https://github.com/ultralytics/yolov5")
 
         self.conf_threshold = conf_threshold
         self.model = None
-        self.use_tensorrt = use_tensorrt and CUDA_AVAILABLE  # Only use TensorRT if CUDA available
+        self.use_tensorrt = use_tensorrt and TORCH_AVAILABLE
         self.model_path = model_path
-        self.device = 0 if CUDA_AVAILABLE else 'cpu'
+        self.device = select_device('0' if TORCH_AVAILABLE else 'cpu')
+        self.img_size = 640  # YOLOv5 default
 
         # Performance tracking
         self.inference_times = []
@@ -59,14 +85,14 @@ class YOLODetector:
         if model_path and Path(model_path).exists():
             self._load_model(model_path)
         else:
-            # Use pretrained YOLOv8n as fallback
-            print("No custom model found, using pretrained YOLOv8n")
+            # Use pretrained YOLOv5n as fallback
+            print("No custom model found, using pretrained YOLOv5n")
             print("Note: For best results, train a custom model on disc images")
             self._load_pretrained()
 
     def _load_model(self, model_path):
-        """Load YOLO model"""
-        print(f"Loading YOLO model from {model_path}...")
+        """Load YOLOv5 model"""
+        print(f"Loading YOLOv5 model from {model_path}...")
 
         model_path = Path(model_path)
 
@@ -75,51 +101,65 @@ class YOLODetector:
 
         if engine_path.exists():
             print(f"Loading TensorRT engine: {engine_path}")
-            self.model = YOLO(str(engine_path))
+            self.model = DetectMultiBackend(str(engine_path), device=self.device)
         elif self.use_tensorrt and model_path.suffix == '.pt':
-            print("Converting to TensorRT engine (first time only, may take 1-2 minutes)...")
-            self.model = YOLO(str(model_path))
-            # Export to TensorRT
-            self.model.export(format='engine', device=0, half=True)  # FP16 for speed
-            print(f"TensorRT engine saved to: {engine_path}")
+            print("Note: TensorRT export for YOLOv5 requires additional steps")
+            print("Using PyTorch model for now. For TensorRT, use: python export.py --weights best.pt --include engine")
+            self.model = DetectMultiBackend(str(model_path), device=self.device)
         else:
-            self.model = YOLO(str(model_path))
+            self.model = DetectMultiBackend(str(model_path), device=self.device)
 
-        print(f"✓ Model loaded successfully")
+        self.img_size = self.model.stride * 32  # Ensure img_size is multiple of stride
+        print(f"✓ Model loaded successfully, image size: {self.img_size}")
 
     def _load_pretrained(self):
-        """Load pretrained YOLOv8n and optimize for circle detection"""
-        print("Loading pretrained YOLOv8n...")
+        """Load pretrained YOLOv5n and optimize for circle detection"""
+        print("Loading pretrained YOLOv5n...")
 
-        # Use YOLOv8n (fastest, good for Jetson)
+        # Use YOLOv5n (fastest, good for Jetson)
         # This model is pretrained on COCO dataset
-        self.model = YOLO('yolov8n.pt')
+        model_name = 'yolov5n.pt'
+        
+        # Try to find the model in YOLOv5 directory or download it
+        yolov5_weights = Path(YOLOV5_PATH) / model_name
+        if yolov5_weights.exists():
+            self.model = DetectMultiBackend(str(yolov5_weights), device=self.device)
+        else:
+            # Let YOLOv5 download it
+            print(f"Downloading {model_name}...")
+            self.model = DetectMultiBackend(model_name, device=self.device)
+
+        self.img_size = 640
+
+        self.img_size = 640
 
         # Classes that are typically round in COCO dataset:
         # 32: sports ball, 33: bottle, 34: wine glass, 36: frisbee
         # We'll detect all objects and filter by circularity
         self.detect_all_classes = True  # Detect everything, filter by shape
 
-        if self.use_tensorrt:
-            try:
-                engine_path = Path('yolov8n.engine')
-                if engine_path.exists():
-                    print("Loading existing TensorRT engine...")
-                    self.model = YOLO(str(engine_path))
-                    print("✓ Using TensorRT engine")
-                else:
-                    print("Converting to TensorRT (first time, ~1-2 minutes)...")
-                    self.model.export(format='engine', device=0, half=True)
-                    print("✓ TensorRT engine created")
-            except Exception as e:
-                print(f"TensorRT conversion failed: {e}")
-                print("Using standard PyTorch model")
+        print("✓ Using YOLOv5 + circularity filtering for disc detection")
 
-        print("✓ Using YOLO + circularity filtering for disc detection")
+    def _preprocess(self, image):
+        """Preprocess image for YOLOv5"""
+        # Letterbox resize
+        img = letterbox(image, self.img_size, stride=self.model.stride)[0]
+        
+        # Convert
+        img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+        img = np.ascontiguousarray(img)
+        
+        # To tensor
+        img = torch.from_numpy(img).to(self.device)
+        img = img.float() / 255.0  # 0 - 255 to 0.0 - 1.0
+        if img.ndimension() == 3:
+            img = img.unsqueeze(0)
+            
+        return img
 
     def detect(self, image):
         """
-        Detect circles using YOLO + circularity filtering
+        Detect circles using YOLOv5 + circularity filtering
 
         Args:
             image: BGR image (numpy array)
@@ -135,14 +175,15 @@ class YOLODetector:
 
         start_time = time.time()
 
-        # Run inference on all objects
-        results = self.model.predict(
-            image,
-            conf=self.conf_threshold,
-            iou=0.45,
-            verbose=False,
-            device=self.device  # Use GPU if available, else CPU
-        )
+        # Preprocess
+        img = self._preprocess(image)
+
+        # Inference
+        with torch.no_grad():
+            pred = self.model(img, augment=False, visualize=False)
+
+        # NMS
+        pred = non_max_suppression(pred, self.conf_threshold, 0.45, classes=None, agnostic=False, max_det=300)
 
         # Track inference time
         inference_time = time.time() - start_time
@@ -152,20 +193,19 @@ class YOLODetector:
 
         detected_circles = []
 
-        if len(results) > 0:
-            result = results[0]
+        # Process predictions
+        for i, det in enumerate(pred):  # per image
+            if len(det):
+                # Rescale boxes from img_size to original image size
+                det[:, :4] = scale_boxes(img.shape[2:], det[:, :4], image.shape).round()
 
-            # Process detections (bounding boxes)
-            if result.boxes is not None and len(result.boxes) > 0:
-                boxes = result.boxes.cpu().numpy()
-
-                for box in boxes:
-                    # Get bounding box
-                    x1, y1, x2, y2 = box.xyxy[0]
-                    conf = box.conf[0]
-
+                # Process detections
+                for *xyxy, conf, cls in reversed(det):
                     if conf < self.conf_threshold:
                         continue
+
+                    # Get bounding box
+                    x1, y1, x2, y2 = int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])
 
                     # Calculate aspect ratio to filter circular objects
                     width = x2 - x1
@@ -183,33 +223,7 @@ class YOLODetector:
                         if radius >= 15:  # Same as Hough minRadius
                             detected_circles.append((center_x, center_y, radius))
 
-            # If segmentation model, use masks for better circle fitting
-            if hasattr(result, 'masks') and result.masks is not None:
-                detected_circles = self._fit_circles_from_masks(result.masks)
-
         return detected_circles
-
-    def _fit_circles_from_masks(self, masks):
-        """Fit circles from segmentation masks (more accurate)"""
-        import cv2
-
-        circles = []
-        masks_data = masks.cpu().numpy()
-
-        for mask in masks_data:
-            # Find contours
-            mask_uint8 = (mask * 255).astype(np.uint8)
-            contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-            if len(contours) > 0:
-                # Get largest contour
-                contour = max(contours, key=cv2.contourArea)
-
-                # Fit minimum enclosing circle
-                (x, y), radius = cv2.minEnclosingCircle(contour)
-                circles.append((int(x), int(y), int(radius)))
-
-        return circles
 
     def get_avg_inference_time(self):
         """Get average inference time in ms"""
@@ -257,7 +271,7 @@ if __name__ == "__main__":
     # Test detector
     import cv2
 
-    print("Testing YOLO detector...")
+    print("Testing YOLOv5 detector...")
     detector = YOLODetector()
 
     # Create test image

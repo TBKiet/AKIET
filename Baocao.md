@@ -14,7 +14,7 @@
 ---
 
 ## Tóm tắt
-Kính thưa Thầy, báo cáo trình bày hệ thống xử lý ảnh hoàn chỉnh cho **Robot Wafer** theo phương pháp **Perception–Measurement–Planning–Visualization**. Hệ thống thực hiện nhận dạng wafer (đĩa bán dẫn hình tròn), đo kích thước thực tế (mm) thông qua hiệu chuẩn camera, phân loại theo kích thước và mô phỏng quỹ đạo gắp robot trên nền tảng NVIDIA Jetson. Với cấu hình camera **Eye-to-Hand**, hệ thống áp dụng thuật toán **Hough Circle Transform** (ưu tiên) và **YOLOv8** (tùy chọn) để đảm bảo xử lý thời gian thực trên phần cứng nhúng.
+Kính thưa Thầy, báo cáo trình bày hệ thống xử lý ảnh hoàn chỉnh cho **Robot Wafer** theo phương pháp **Perception–Measurement–Planning–Visualization**. Hệ thống thực hiện nhận dạng wafer (đĩa bán dẫn hình tròn), đo kích thước thực tế (mm) thông qua hiệu chuẩn camera, phân loại theo kích thước và mô phỏng quỹ đạo gắp robot trên nền tảng **NVIDIA Jetson Nano Developer Kit B01**. Với cấu hình camera **Eye-to-Hand**, hệ thống áp dụng thuật toán **Hough Circle Transform** (ưu tiên) và **YOLOv8** (tùy chọn) để đảm bảo xử lý thời gian thực trên phần cứng nhúng.
 
 **Từ khóa:** Robot Wafer, Hough Circle Transform, YOLOv8, hiệu chuẩn camera, pixel-to-mm, phân loại kích thước, Bezier path planning, NVIDIA Jetson, xử lý ảnh thời gian thực.
 
@@ -34,7 +34,7 @@ Xây dựng hệ thống thị giác máy tính hoàn chỉnh bao gồm:
 - **Mô phỏng:** Trực quan hóa quá trình hoạt động trong giao diện 2D
 
 ### 1.3 Phạm vi thực hiện
-Đồ án tập trung vào thuật toán và phần mềm, mô phỏng trên nền tảng NVIDIA Jetson mà không yêu cầu phần cứng robot thực tế. Chuỗi xử lý: **thu ảnh → phát hiện → hiệu chuẩn → phân loại → phân tích không gian → lập kế hoạch quỹ đạo → trực quan hóa**.
+Đồ án tập trung vào thuật toán và phần mềm, mô phỏng trên nền tảng **NVIDIA Jetson Nano Developer Kit B01** mà không yêu cầu phần cứng robot thực tế. Chuỗi xử lý: **thu ảnh → phát hiện → hiệu chuẩn → phân loại → phân tích không gian → lập kế hoạch quỹ đạo → trực quan hóa**.
 
 ---
 
@@ -114,12 +114,12 @@ trong đó \(P_0\) là điểm xuất phát, \(P_2\) là mục tiêu, \(P_1\) l�
 ## 4. Vì sao không triển khai YOLO trong cấu hình phần cứng hạn chế (nhấn mạnh)
 Hệ thống có mô-đun YOLOv8 Nano (tùy chọn) với tối ưu TensorRT (FP16), nhưng đi kèm nhiều yêu cầu phụ thuộc và tài nguyên: CUDA-capable GPU, thư viện `ultralytics/torch/torchvision` và runtime TensorRT. :contentReference[oaicite:13]{index=13}
 
-Trong khi đó, cấu hình mục tiêu phổ biến là **Jetson Nano 4GB (tối thiểu)**. :contentReference[oaicite:14]{index=14} Trên cấu hình này, việc triển khai YOLO thường gặp các bất lợi sau (trong bối cảnh dự án ưu tiên ổn định thời gian thực và đơn giản triển khai):
+Trong khi đó, cấu hình mục tiêu là **NVIDIA Jetson Nano Developer Kit B01 (4GB RAM, JetPack 4.6.6/L4T R32.7.6, CUDA 10.2)**. :contentReference[oaicite:14]{index=14} Trên cấu hình này, việc triển khai YOLO thường gặp các bất lợi sau (trong bối cảnh dự án ưu tiên ổn định thời gian thực và đơn giản triển khai):
 1. **Chi phí bộ nhớ và phụ thuộc phần mềm lớn:** YOLO yêu cầu stack PyTorch + Ultralytics + TensorRT, làm tăng độ phức tạp cài đặt và footprint bộ nhớ so với OpenCV/Hough. :contentReference[oaicite:15]{index=15}
-2. **Tải tính toán và quản trị tài nguyên:** mô tả hiệu năng tham chiếu cho YOLOv8+TensorRT cho thấy mức GPU usage cao và bộ nhớ khoảng ~1.2GB (trên cấu hình mạnh hơn), trong khi Hough trên Nano có footprint ~800MB theo cấu hình hiện tại. :contentReference[oaicite:16]{index=16}
+2. **Tải tính toán và quản trị tài nguyên:** mô tả hiệu năng tham chiếu cho YOLOv8+TensorRT cho thấy mức GPU usage cao và bộ nhớ khoảng ~1.2GB (trên cấu hình mạnh hơn), trong khi Hough trên Jetson Nano B01 có footprint ~800MB theo cấu hình hiện tại. :contentReference[oaicite:16]{index=16}
 3. **Không tương xứng mục tiêu học thuật của bài toán:** đối tượng là hình tròn tương đối “dễ” về hình học, nên Hough + hiệu chuẩn + luật phân lớp đã đáp ứng yêu cầu thuật toán (phát hiện–đo–phân loại–lập kế hoạch) mà không cần năng lực biểu diễn của mạng sâu. :contentReference[oaicite:17]{index=17}
 
-**Kết luận của lựa chọn thiết kế:** Thưa thầy, vì ràng buộc phần cứng (đặc biệt là Nano 4GB) và ưu tiên tính ổn định, hệ thống chọn Hough Circle Transform làm phương án mặc định; YOLO được giữ ở vai trò tham chiếu kiến trúc/so sánh, thay vì triển khai bắt buộc.
+**Kết luận của lựa chọn thiết kế:** Thưa thầy, vì ràng buộc phần cứng (NVIDIA Jetson Nano Developer Kit B01 với 4GB RAM, JetPack 4.6.6) và ưu tiên tính ổn định, hệ thống chọn Hough Circle Transform làm phương án mặc định; YOLO được giữ ở vai trò tham chiếu kiến trúc/so sánh, thay vì triển khai bắt buộc.
 
 ---
 
@@ -131,7 +131,7 @@ Trong khi đó, cấu hình mục tiêu phổ biến là **Jetson Nano 4GB (tố
 ---
 
 ## 6. Kết luận
-Báo cáo đã trình bày chuỗi thuật toán từ thị giác máy đến lập kế hoạch quỹ đạo trong một kiến trúc mô-đun: **Hough phát hiện hình tròn → hiệu chuẩn pixel-to-mm → phân loại theo luật → suy luận không gian heuristic → quỹ đạo Bezier bậc hai**. Các lựa chọn thuật toán nhấn mạnh tính giải thích được, chi phí tính toán thấp và phù hợp phần cứng nhúng. Đồng thời, mô-đun YOLOv8 được ghi nhận như một hướng thay thế, nhưng không phải lựa chọn triển khai tối ưu khi mục tiêu là vận hành ổn định trên cấu hình hạn chế (ví dụ Jetson Nano 4GB). :contentReference[oaicite:21]{index=21}
+Báo cáo đã trình bày chuỗi thuật toán từ thị giác máy đến lập kế hoạch quỹ đạo trong một kiến trúc mô-đun: **Hough phát hiện hình tròn → hiệu chuẩn pixel-to-mm → phân loại theo luật → suy luận không gian heuristic → quỹ đạo Bezier bậc hai**. Các lựa chọn thuật toán nhấn mạnh tính giải thích được, chi phí tính toán thấp và phù hợp phần cứng nhúng. Đồng thời, mô-đun YOLOv8 được ghi nhận như một hướng thay thế, nhưng không phải lựa chọn triển khai tối ưu khi mục tiêu là vận hành ổn định trên **NVIDIA Jetson Nano Developer Kit B01 (4GB RAM)**. :contentReference[oaicite:21]{index=21}
 
 ---
 

@@ -1,8 +1,8 @@
 #!/bin/bash
-# Setup script for YOLO detector on Jetson
+# Setup script for YOLOv5 detector on Jetson
 
 echo "=========================================="
-echo "Setting up YOLOv8 + TensorRT for Jetson"
+echo "Setting up YOLOv5 + TensorRT for Jetson"
 echo "=========================================="
 
 # Check if conda env is active
@@ -13,31 +13,36 @@ if [ -z "$CONDA_DEFAULT_ENV" ]; then
 fi
 
 echo ""
-echo "Step 1: Installing ultralytics..."
-pip install ultralytics
+echo "Step 1: Cloning YOLOv5 repository..."
+if [ ! -d "yolov5" ]; then
+    git clone https://github.com/ultralytics/yolov5
+    cd yolov5
+    pip install -r requirements.txt
+    cd ..
+else
+    echo "✓ YOLOv5 directory already exists"
+fi
 
 echo ""
-echo "Step 2: Downloading YOLOv8n model..."
+echo "Step 2: Downloading YOLOv5n model..."
 python3 << EOF
-from ultralytics import YOLO
-model = YOLO('yolov8n.pt')
-print("✓ YOLOv8n downloaded")
-EOF
-
-echo ""
-echo "Step 3: Converting to TensorRT (this may take 2-3 minutes)..."
-python3 << EOF
-from ultralytics import YOLO
 import torch
-
 print("PyTorch CUDA available:", torch.cuda.is_available())
-print("CUDA device:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None")
+if torch.cuda.is_available():
+    print("CUDA device:", torch.cuda.get_device_name(0))
 
-model = YOLO('yolov8n.pt')
-print("Exporting to TensorRT...")
-model.export(format='engine', device=0, half=True)
-print("✓ TensorRT engine created: yolov8n.engine")
+# Download YOLOv5n
+import sys
+sys.path.insert(0, 'yolov5')
+from models.common import DetectMultiBackend
+
+model = DetectMultiBackend('yolov5n.pt', device='0' if torch.cuda.is_available() else 'cpu')
+print("✓ YOLOv5n downloaded")
 EOF
+
+echo ""
+echo "Step 3: Converting to TensorRT (optional, may take 2-3 minutes)..."
+echo "Run manually: cd yolov5 && python export.py --weights yolov5n.pt --include engine --device 0"
 
 echo ""
 echo "Step 4: Testing detector..."
