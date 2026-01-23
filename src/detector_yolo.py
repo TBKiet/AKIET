@@ -111,11 +111,11 @@ class YOLODetector:
             self.model = DetectMultiBackend(str(model_path), device=self.device)
 
         self.img_size = self.model.stride * 32  # Ensure img_size is multiple of stride
-        
+
         # Use FP16 for speedup on Jetson
         if self.half and hasattr(self.model, 'half'):
             self.model.half()
-            
+
         print(f"✓ Model loaded successfully, image size: {self.img_size}")
 
     def _load_pretrained(self):
@@ -151,19 +151,19 @@ class YOLODetector:
     def _preprocess(self, image):
         """Preprocess image for YOLOv5 - optimized version"""
         import cv2
-        
+
         # Resize with cv2 (faster than letterbox for simple resize)
         h, w = image.shape[:2]
-        
+
         # Simple resize instead of letterbox (faster)
         if h != self.img_size or w != self.img_size:
             img = cv2.resize(image, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
         else:
             img = image.copy()
-        
+
         # Convert BGR to RGB
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        
+
         # Transpose HWC to CHW
         img = img.transpose((2, 0, 1))
         img = np.ascontiguousarray(img)
@@ -212,7 +212,7 @@ class YOLODetector:
             self.inference_times.pop(0)
 
         detected_circles = []
-        
+
         # Calculate scale factors
         orig_w, orig_h = orig_size
         scale_x = orig_w / self.img_size
