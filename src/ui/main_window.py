@@ -8,7 +8,15 @@ from PyQt5.QtGui import QColor
 
 from src.camera import Camera
 from src.detector import CircleDetector  # Use Hough Circle - fast on CPU
-# from src.detector_yolo import YOLODetector  # Requires GPU
+
+# Try to import YOLO detector
+try:
+    from src.detector_yolo import YOLODetector
+    YOLO_AVAILABLE = True
+except Exception as e:
+    YOLO_AVAILABLE = False
+    print(f"YOLO detector not available: {e}")
+
 from src.calibration import CalibrationManager
 from src.classifier import Classifier
 from src.planner import PathPlanner
@@ -23,9 +31,23 @@ class MainWindow(QMainWindow):
         # Initialize Core Modules
         self.camera = Camera(480, 360, 60)  # Optimized: 480x360@60fps
 
-        # Use Hough Circle Detector (CPU-friendly, fast)
-        self.detector = CircleDetector()
-        print("✓ Hough Circle Detector loaded (CPU-optimized)")
+        # Choose detector based on availability and user preference
+        # Set USE_YOLO = True to use YOLO detector (GPU required)
+        USE_YOLO = True  # Change to False to use Hough detector
+
+        if USE_YOLO and YOLO_AVAILABLE:
+            try:
+                print("Loading YOLOv5 detector (GPU)...")
+                self.detector = YOLODetector(conf_threshold=0.5)
+                print("✓ YOLOv5 Detector loaded (GPU-accelerated)")
+            except Exception as e:
+                print(f"Failed to load YOLO: {e}")
+                print("Falling back to Hough Circle Detector...")
+                self.detector = CircleDetector()
+                print("✓ Hough Circle Detector loaded (CPU-optimized)")
+        else:
+            self.detector = CircleDetector()
+            print("✓ Hough Circle Detector loaded (CPU-optimized)")
 
         self.calibration = CalibrationManager(scale_factor=1.0) # Default 1mm/px (needs calib)
         self.planner = PathPlanner()
