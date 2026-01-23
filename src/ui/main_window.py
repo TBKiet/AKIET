@@ -37,7 +37,7 @@ class MainWindow(QMainWindow):
         # TEMPORARY: Force use Hough detector for testing
         USE_YOLO = False
         YOLO_AVAILABLE = False  # Force disable
-        
+
         if False:  # Disabled for now
             try:
                 print("Loading YOLOv5 detector (GPU)...")

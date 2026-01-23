@@ -46,11 +46,15 @@ class CameraWidget(QLabel):
 
             # Simple scale to fit
             if pixmap.width() > self.width() or pixmap.height() > self.height():
-                pixmap = pixmap.scaled(
-                    self.size(),
-                    Qt.AspectRatioMode.KeepAspectRatio if hasattr(Qt, 'AspectRatioMode') else Qt.KeepAspectRatio,
-                    Qt.TransformationMode.FastTransformation if hasattr(Qt, 'TransformationMode') else Qt.FastTransformation  # Fast, not smooth
-                )
+                # Fix Qt compatibility
+                try:
+                    aspect_ratio = Qt.KeepAspectRatio
+                    transform = Qt.FastTransformation
+                except:
+                    aspect_ratio = Qt.AspectRatioMode.KeepAspectRatio
+                    transform = Qt.TransformationMode.FastTransformation
+
+                pixmap = pixmap.scaled(self.size(), aspect_ratio, transform)
 
             self.setPixmap(pixmap)
             self.update()  # Single update, no repaint()
