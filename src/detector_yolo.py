@@ -33,7 +33,7 @@ try:
         print(f"✓ CUDA available: {torch.cuda.get_device_name(0)}")
     else:
         print("⚠ CUDA not available, using CPU (slower)")
-    
+
     # Try to import YOLOv5
     try:
         # Import YOLOv5 models
@@ -47,7 +47,7 @@ try:
         print(f"YOLOv5 import error: {e}")
         print("Please clone YOLOv5: git clone https://github.com/ultralytics/yolov5")
         YOLO_AVAILABLE = False
-        
+
 except ImportError:
     TORCH_AVAILABLE = False
     YOLO_AVAILABLE = False
@@ -75,7 +75,8 @@ class YOLODetector:
         self.use_tensorrt = use_tensorrt and TORCH_AVAILABLE
         self.model_path = model_path
         self.device = select_device('0' if TORCH_AVAILABLE else 'cpu')
-        self.img_size = 640  # YOLOv5 default
+        self.img_size = 480  # Reduced from 640 for faster inference on Jetson
+        self.half = TORCH_AVAILABLE  # Use FP16 if available
 
         # Performance tracking
         self.inference_times = []
@@ -110,6 +111,11 @@ class YOLODetector:
             self.model = DetectMultiBackend(str(model_path), device=self.device)
 
         self.img_size = self.model.stride * 32  # Ensure img_size is multiple of stride
+        
+        # Use FP16 for speedup on Jetson
+        if self.half and hasattr(self.model, 'half'):
+            self.model.half()
+            
         print(f"✓ Model loaded successfully, image size: {self.img_size}")
 
     def _load_pretrained(self):
@@ -119,7 +125,7 @@ class YOLODetector:
         # Use YOLOv5n (fastest, good for Jetson)
         # This model is pretrained on COCO dataset
         model_name = 'yolov5n.pt'
-        
+
         # Try to find the model in YOLOv5 directory or download it
         yolov5_weights = Path(YOLOV5_PATH) / model_name
         if yolov5_weights.exists():
@@ -129,9 +135,11 @@ class YOLODetector:
             print(f"Downloading {model_name}...")
             self.model = DetectMultiBackend(model_name, device=self.device)
 
-        self.img_size = 640
+        self.img_size = 480  # Reduced for faster inference
 
-        self.img_size = 640
+        # Use FP16 for speedup on Jetson
+        if self.half and hasattr(self.model, 'half'):
+            self.model.half()
 
         # Classes that are typically round in COCO dataset:
         # 32: sports ball, 33: bottle, 34: wine glass, 36: frisbee
@@ -141,21 +149,33 @@ class YOLODetector:
         print("✓ Using YOLOv5 + circularity filtering for disc detection")
 
     def _preprocess(self, image):
-        """Preprocess image for YOLOv5"""
-        # Letterbox resize
-        img = letterbox(image, self.img_size, stride=self.model.stride)[0]
+        """Preprocess image for YOLOv5 - optimized version"""
+        import cv2
         
-        # Convert
-        img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+        # Resize with cv2 (faster than letterbox for simple resize)
+        h, w = image.shape[:2]
+        
+        # Simple resize instead of letterbox (faster)
+        if h != self.img_size or w != self.img_size:
+            img = cv2.resize(image, (self.img_size, self.img_size), interpolation=cv2.INTER_LINEAR)
+        else:
+            img = image.copy()
+        
+        # Convert BGR to RGB
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        
+        # Transpose HWC to CHW
+        img = img.transpose((2, 0, 1))
         img = np.ascontiguousarray(img)
-        
+
         # To tensor
         img = torch.from_numpy(img).to(self.device)
-        img = img.float() / 255.0  # 0 - 255 to 0.0 - 1.0
+        img = img.half() if self.half else img.float()  # uint8 to fp16/32
+        img /= 255.0  # 0 - 255 to 0.0 - 1.0
         if img.ndimension() == 3:
             img = img.unsqueeze(0)
-            
-        return img
+
+        return img, (w, h)  # Return original size for rescaling
 
     def detect(self, image):
         """
@@ -176,7 +196,7 @@ class YOLODetector:
         start_time = time.time()
 
         # Preprocess
-        img = self._preprocess(image)
+        img, orig_size = self._preprocess(image)
 
         # Inference
         with torch.no_grad():
@@ -192,20 +212,25 @@ class YOLODetector:
             self.inference_times.pop(0)
 
         detected_circles = []
+        
+        # Calculate scale factors
+        orig_w, orig_h = orig_size
+        scale_x = orig_w / self.img_size
+        scale_y = orig_h / self.img_size
 
         # Process predictions
         for i, det in enumerate(pred):  # per image
             if len(det):
-                # Rescale boxes from img_size to original image size
-                det[:, :4] = scale_boxes(img.shape[2:], det[:, :4], image.shape).round()
-
-                # Process detections
+                # Process detections - boxes are in img_size coordinates
                 for *xyxy, conf, cls in reversed(det):
                     if conf < self.conf_threshold:
                         continue
 
-                    # Get bounding box
-                    x1, y1, x2, y2 = int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])
+                    # Get bounding box and rescale to original image size
+                    x1 = int(xyxy[0].item() * scale_x)
+                    y1 = int(xyxy[1].item() * scale_y)
+                    x2 = int(xyxy[2].item() * scale_x)
+                    y2 = int(xyxy[3].item() * scale_y)
 
                     # Calculate aspect ratio to filter circular objects
                     width = x2 - x1
