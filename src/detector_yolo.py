@@ -221,16 +221,21 @@ class YOLODetector:
         # Process predictions
         for i, det in enumerate(pred):  # per image
             if len(det):
+                # Convert to CPU once for all detections (much faster than .item() per detection)
+                det_cpu = det.cpu().numpy()
+
                 # Process detections - boxes are in img_size coordinates
-                for *xyxy, conf, cls in reversed(det):
+                for detection in det_cpu:
+                    x1, y1, x2, y2, conf, cls = detection
+
                     if conf < self.conf_threshold:
                         continue
 
-                    # Get bounding box and rescale to original image size
-                    x1 = int(xyxy[0].item() * scale_x)
-                    y1 = int(xyxy[1].item() * scale_y)
-                    x2 = int(xyxy[2].item() * scale_x)
-                    y2 = int(xyxy[3].item() * scale_y)
+                    # Rescale to original image size
+                    x1 = int(x1 * scale_x)
+                    y1 = int(y1 * scale_y)
+                    x2 = int(x2 * scale_x)
+                    y2 = int(y2 * scale_y)
 
                     # Calculate aspect ratio to filter circular objects
                     width = x2 - x1
