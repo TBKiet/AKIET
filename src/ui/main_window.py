@@ -6,7 +6,9 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QColor
 
+# Use original CSI camera (works with subprocess + GStreamer)
 from src.camera import Camera
+
 from src.detector import CircleDetector  # Use Hough Circle - fast on CPU
 
 # Try to import YOLO detector
