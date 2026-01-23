@@ -35,7 +35,7 @@ class MainWindow(QMainWindow):
 
         # Choose detector based on availability and user preference
         # Set USE_YOLO = True to use YOLO detector (GPU required)
-        USE_YOLO = True  # Change to False to use Hough detector
+        USE_YOLO = False  # Tắt YOLO để test camera
 
         if USE_YOLO and YOLO_AVAILABLE:
             try:
