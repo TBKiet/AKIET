@@ -12,7 +12,11 @@ class CameraWidget(QLabel):
         super().__init__()
         self.setMinimumSize(320, 240)  # Smaller for tiny display
         self.setStyleSheet("background-color: black;")
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter if hasattr(Qt, 'AlignmentFlag') else Qt.AlignCenter)
+        # Fix Qt compatibility
+        try:
+            self.setAlignment(Qt.AlignCenter)
+        except:
+            self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setText("Waiting for Camera...")
         self.setScaledContents(False)
 
