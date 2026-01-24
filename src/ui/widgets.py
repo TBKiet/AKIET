@@ -193,9 +193,12 @@ class SimulationWidget(QWidget):
         if not self.robot_path:
             return
 
+        # Convert to QPolygon
+        from PyQt5.QtGui import QPolygon
+        path_points = QPolygon([QPoint(p[0], p[1]) for p in self.robot_path])
+
         # Glow effect (outer layer)
         painter.setPen(QPen(QColor(0, 255, 0, 50), 6))
-        path_points = [QPoint(p[0], p[1]) for p in self.robot_path]
         painter.drawPolyline(path_points)
 
         # Main path
