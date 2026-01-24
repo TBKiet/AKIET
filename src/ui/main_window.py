@@ -345,6 +345,9 @@ class MainWindow(QMainWindow):
 
     def _next_animation_stage(self):
         """Progress to next stage of pick-and-place sequence"""
+        # CRITICAL: Stop timer before transitioning
+        self.anim_timer.stop()
+
         if self.anim_stage == 0:
             # Stage 0 complete: Arrived at disc, now pick it
             print("[DEBUG] Stage 1: Picking disc...")
