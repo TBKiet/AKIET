@@ -276,11 +276,20 @@ class MainWindow(QMainWindow):
             scale_x = 400 / 480  # Leave room for bins on right
             scale_y = 450 / 360
 
+            # Fixed radius based on classification (not scaled from camera)
+            size_class = obj['class']
+            if size_class == 'Small (5cm)':
+                fixed_radius = 20
+            elif size_class == 'Medium (7cm)':
+                fixed_radius = 30
+            else:  # Large (10cm)
+                fixed_radius = 40
+
             sim_disc = {
                 'x': int(obj['x'] * scale_x + 20),
                 'y': int(obj['y'] * scale_y + 20),
-                'radius': max(15, int(obj['radius_px'] * scale_x)),  # Min 15px for visibility
-                'size_class': obj['class'],
+                'radius': fixed_radius,  # Fixed size based on classification
+                'size_class': size_class,
                 'radius_mm': obj['radius_mm']
             }
             sim_discs.append(sim_disc)
