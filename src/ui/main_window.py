@@ -256,7 +256,11 @@ class MainWindow(QMainWindow):
         Triggers the robot path planning demo.
         Target: The largest object detected.
         """
+        print(f"[DEBUG] _start_simulation called, detected_objects: {len(self.detected_objects)}")
+
         if not self.detected_objects:
+            self.lbl_stats.setText("Status: No objects detected! Please detect discs first.")
+            print("[DEBUG] No objects detected - cannot start simulation")
             return
 
         # Find largest object
@@ -293,6 +297,9 @@ class MainWindow(QMainWindow):
         self.anim_path = path
         self.anim_idx = 0
         self.anim_timer.start(16)  # ~60 FPS for smooth animation
+
+        self.lbl_stats.setText(f"Status: Simulating path to {target['class']} disc...")
+        print(f"[DEBUG] Simulation started - animating to {target['class']} at ({end_x}, {end_y})")
 
     def _animate_robot(self):
         """Animate robot with smooth easing"""
