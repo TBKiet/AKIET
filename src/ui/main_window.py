@@ -85,6 +85,9 @@ class MainWindow(QMainWindow):
         self.anim_timer.timeout.connect(self._animate_robot)
         self.anim_path = []
         self.anim_idx = 0
+        self.anim_stage = 0  # 0: move to disc, 1: pick, 2: move to bin, 3: place
+        self.current_target = None
+        self.target_bin_pos = None
 
     def _on_yolo_detection_complete(self, circles, inference_time_ms, frame_id):
         """
@@ -292,17 +295,33 @@ class MainWindow(QMainWindow):
 
         path = self.planner.generate_path((start_x, start_y), (end_x, end_y), num_points=100)
 
+        # Store target info for multi-stage animation
+        self.current_target = target
+        self.current_target_pos = (end_x, end_y)
+
+        # Determine bin position based on size
+        bin_x = self.sim_widget.width() - 60  # Right side
+        if target['class'] == 'Small (5cm)':
+            bin_y = 100
+        elif target['class'] == 'Medium (7cm)':
+            bin_y = 220
+        else:  # Large
+            bin_y = 340
+        self.target_bin_pos = (bin_x, bin_y)
+
+        # Stage 0: Move to disc
+        self.anim_stage = 0
         self.sim_widget.set_robot_path(path)
         self.sim_widget.set_robot_state("Moving")
         self.anim_path = path
         self.anim_idx = 0
         self.anim_timer.start(16)  # ~60 FPS for smooth animation
 
-        self.lbl_stats.setText(f"Status: Simulating path to {target['class']} disc...")
-        print(f"[DEBUG] Simulation started - animating to {target['class']} at ({end_x}, {end_y})")
+        self.lbl_stats.setText(f"Status: Moving to {target['class']} disc...")
+        print(f"[DEBUG] Stage 0: Moving to {target['class']} at ({end_x}, {end_y})")
 
     def _animate_robot(self):
-        """Animate robot with smooth easing"""
+        """Animate robot with smooth easing - multi-stage pick and place"""
         if self.anim_idx < len(self.anim_path):
             # Smooth easing (ease-in-out)
             progress = self.anim_idx / len(self.anim_path)
@@ -321,8 +340,57 @@ class MainWindow(QMainWindow):
             self.sim_widget.set_robot_pos(x, y)
             self.anim_idx += 1
         else:
-            self.anim_timer.stop()
-            self.sim_widget.set_robot_state("Idle")
+            # Current stage complete, move to next stage
+            self._next_animation_stage()
+
+    def _next_animation_stage(self):
+        """Progress to next stage of pick-and-place sequence"""
+        if self.anim_stage == 0:
+            # Stage 0 complete: Arrived at disc, now pick it
+            print("[DEBUG] Stage 1: Picking disc...")
+            self.sim_widget.set_robot_state("Picking")
+            self.lbl_stats.setText(f"Status: Picking {self.current_target['class']} disc...")
+
+            # Wait a moment, then move to bin
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(500, self._start_transport_to_bin)
+
+        elif self.anim_stage == 1:
+            # Stage 1 complete: Arrived at bin, now place
+            print("[DEBUG] Stage 2: Placing disc in bin...")
+            self.sim_widget.set_robot_state("Placing")
+            self.lbl_stats.setText(f"Status: Placing {self.current_target['class']} in bin...")
+
+            # Wait a moment, then finish
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(500, self._finish_sorting)
+
+    def _start_transport_to_bin(self):
+        """Stage 1: Transport disc to appropriate bin"""
+        self.anim_stage = 1
+
+        # Generate path from current position to bin
+        current_pos = self.sim_widget.robot_pos
+        path = self.planner.generate_path(current_pos, self.target_bin_pos, num_points=100)
+
+        self.sim_widget.set_robot_path(path)
+        self.sim_widget.set_robot_state("Moving")
+        self.anim_path = path
+        self.anim_idx = 0
+        self.anim_timer.start(16)
+
+        self.lbl_stats.setText(f"Status: Transporting {self.current_target['class']} to bin...")
+        print(f"[DEBUG] Stage 1: Transporting to bin at {self.target_bin_pos}")
+
+    def _finish_sorting(self):
+        """Complete the sorting sequence"""
+        self.sim_widget.set_robot_state("Idle")
+        self.sim_widget.sorted_count += 1
+        self.lbl_stats.setText(f"Status: Sorting complete! {self.current_target['class']} placed in bin.")
+        print(f"[DEBUG] Sorting complete - {self.current_target['class']} sorted")
+
+        # Clear path
+        self.sim_widget.set_robot_path([])
 
     def closeEvent(self, event):
         # Stop camera
