@@ -141,7 +141,7 @@ class SimulationWidget(QWidget):
                     color = QColor(0, 255, 0)  # Green for first path (to disc)
                 else:
                     color = QColor(255, 165, 0)  # Orange for return path (to bin)
-                self._draw_path_with_glow(path, color)
+                self._draw_path_with_glow(painter, path, color)
 
         # Draw discs with enhanced visuals
         for disc in self.discs:
