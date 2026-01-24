@@ -262,24 +262,60 @@ class MainWindow(QMainWindow):
         # Find largest object
         target = max(self.detected_objects, key=lambda x: x['radius_mm'])
 
-        # Simulation coordinates (matched with _process_frame mapping)
-        start_x, start_y = (50, 350) # Robot base
-        end_x, end_y = (target['x'] // 2 + 50, target['y'] // 2)
+        # Update simulation widget with detected discs
+        sim_discs = []
+        for obj in self.detected_objects:
+            # Scale coordinates to simulation space (camera is 480x360, sim is 500x500)
+            scale_x = 400 / 480  # Leave room for bins on right
+            scale_y = 450 / 360
 
-        path = self.planner.generate_path((start_x, start_y), (end_x, end_y))
+            sim_disc = {
+                'x': int(obj['x'] * scale_x + 20),
+                'y': int(obj['y'] * scale_y + 20),
+                'radius': max(15, int(obj['radius_px'] * scale_x)),  # Min 15px for visibility
+                'size_class': obj['class'],
+                'radius_mm': obj['radius_mm']
+            }
+            sim_discs.append(sim_disc)
+
+        self.sim_widget.set_discs(sim_discs)
+
+        # Robot starts at bottom-left
+        start_x, start_y = (50, 450)
+        # Target is the scaled position of largest disc
+        end_x = int(target['x'] * scale_x + 20)
+        end_y = int(target['y'] * scale_y + 20)
+
+        path = self.planner.generate_path((start_x, start_y), (end_x, end_y), num_points=100)
 
         self.sim_widget.set_robot_path(path)
+        self.sim_widget.set_robot_state("Moving")
         self.anim_path = path
         self.anim_idx = 0
-        self.anim_timer.start(20) # 50 FPS for animation
+        self.anim_timer.start(16)  # ~60 FPS for smooth animation
 
     def _animate_robot(self):
+        """Animate robot with smooth easing"""
         if self.anim_idx < len(self.anim_path):
-            x, y = self.anim_path[self.anim_idx]
+            # Smooth easing (ease-in-out)
+            progress = self.anim_idx / len(self.anim_path)
+            if progress < 0.5:
+                # Ease in (accelerate)
+                eased_progress = 2 * progress * progress
+            else:
+                # Ease out (decelerate)
+                eased_progress = 1 - 2 * (1 - progress) * (1 - progress)
+
+            # Use eased index for smoother motion
+            eased_idx = int(eased_progress * len(self.anim_path))
+            eased_idx = min(eased_idx, len(self.anim_path) - 1)
+
+            x, y = self.anim_path[eased_idx]
             self.sim_widget.set_robot_pos(x, y)
             self.anim_idx += 1
         else:
             self.anim_timer.stop()
+            self.sim_widget.set_robot_state("Idle")
 
     def closeEvent(self, event):
         # Stop camera
