@@ -14,9 +14,11 @@ from src.detector import CircleDetector  # Use Hough Circle - fast on CPU
 # Try to import YOLO detector
 try:
     from src.detector_yolo import YOLODetector
+    from src.yolo_worker import YOLOWorkerThread
     YOLO_AVAILABLE = True
 except Exception as e:
     YOLO_AVAILABLE = False
+    YOLOWorkerThread = None
     print(f"YOLO detector not available: {e}")
 
 from src.calibration import CalibrationManager
@@ -34,15 +36,27 @@ class MainWindow(QMainWindow):
         self.camera = Camera(480, 360, 60)  # Optimized: 480x360@60fps
 
         # Choose detector based on availability and user preference
-        # TEMPORARY: Force use Hough detector for testing
-        USE_YOLO = False
-        YOLO_AVAILABLE = False  # Force disable
+        # Set to True to enable YOLO with background threading
+        USE_YOLO = YOLO_AVAILABLE  # Enable YOLO if available
 
-        if False:  # Disabled for now
+        self.yolo_worker = None
+        self.latest_detections = []  # Store latest YOLO results
+        self.yolo_inference_time = 0
+
+        if USE_YOLO and YOLO_AVAILABLE:
             try:
                 print("Loading YOLOv5 detector (GPU)...")
-                self.detector = YOLODetector(conf_threshold=0.5)
+                yolo_detector = YOLODetector(conf_threshold=0.5)
                 print("✓ YOLOv5 Detector loaded (GPU-accelerated)")
+
+                # Create background worker thread
+                self.yolo_worker = YOLOWorkerThread(yolo_detector)
+                self.yolo_worker.detection_complete.connect(self._on_yolo_detection_complete)
+                self.yolo_worker.start()
+                print("✓ YOLO Worker Thread started")
+
+                # Use Hough as fallback for visualization
+                self.detector = CircleDetector()
             except Exception as e:
                 print(f"Failed to load YOLO: {e}")
                 print("Falling back to Hough Circle Detector...")
@@ -71,6 +85,15 @@ class MainWindow(QMainWindow):
         self.anim_timer.timeout.connect(self._animate_robot)
         self.anim_path = []
         self.anim_idx = 0
+
+    def _on_yolo_detection_complete(self, circles, inference_time_ms, frame_id):
+        """
+        Callback when YOLO worker completes detection.
+        Runs on main thread (Qt signal).
+        """
+        self.latest_detections = circles
+        self.yolo_inference_time = inference_time_ms
+        # Results will be used in next _process_frame call
 
     def _setup_ui(self):
         central_widget = QWidget()
@@ -138,6 +161,7 @@ class MainWindow(QMainWindow):
     def _process_frame(self, frame):
         """
         Main loop logic: Detect -> Measure -> Draw -> Display
+        Optimized: Uses background YOLO worker + frame skipping
         """
         # Track FPS
         if not hasattr(self, '_frame_count'):
@@ -149,48 +173,62 @@ class MainWindow(QMainWindow):
         if self._frame_count % 30 == 0:
             elapsed = time.time() - self._last_fps_time
             fps = 30 / elapsed if elapsed > 0 else 0
-            print(f"FPS: {fps:.1f}")
+            print(f"UI FPS: {fps:.1f}")
+            if self.yolo_worker:
+                print(f"YOLO Inference: {self.yolo_inference_time:.1f}ms")
             self._last_fps_time = time.time()
 
-        vis_frame = frame.copy()
+        # OPTIMIZATION: Don't copy frame unless necessary
+        # We'll draw directly on the frame (camera should provide fresh frames)
+        vis_frame = frame
 
-        # Hough Circle Detection (fast on CPU)
-        try:
-            # 1. Detect Circles
-            circles = self.detector.detect(frame)
+        # If YOLO worker is active, send frame to background thread
+        if self.yolo_worker:
+            # Send frame to worker (worker will drop if still processing)
+            self.yolo_worker.add_frame(frame.copy())  # Copy here since worker runs async
 
-            # 2. Process Detections
-            self.detected_objects = []
+            # Use latest YOLO detections (may be from previous frame)
+            circles = self.latest_detections
+        else:
+            # Fallback: Use Hough detector (runs on UI thread - fast enough)
+            try:
+                circles = self.detector.detect(frame)
+            except Exception as e:
+                circles = []
+                cv2.putText(vis_frame, f"Error: {str(e)[:30]}", (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
 
-            for (x, y, radius) in circles:
-                # Measure
-                radius_mm = self.calibration.pixel_to_mm(radius)
-                size_class = self.classifier.classify(radius_mm)
+        # Process Detections
+        self.detected_objects = []
 
-                # Store
-                obj = {
-                    'x': x, 'y': y, 'radius_px': radius,
-                    'radius_mm': radius_mm, 'class': size_class
-                }
-                self.detected_objects.append(obj)
+        for (x, y, radius) in circles:
+            # Measure
+            radius_mm = self.calibration.pixel_to_mm(radius)
+            size_class = self.classifier.classify(radius_mm)
 
-                # Draw on Camera Frame
-                cv2.circle(vis_frame, (x, y), radius, (0, 255, 0), 2)
-                cv2.circle(vis_frame, (x, y), 2, (0, 0, 255), 3)
-                text = f"{size_class} ({radius_mm:.1f}mm)"
-                cv2.putText(vis_frame, text, (x - 20, y - 20),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            # Store
+            obj = {
+                'x': x, 'y': y, 'radius_px': radius,
+                'radius_mm': radius_mm, 'class': size_class
+            }
+            self.detected_objects.append(obj)
 
-            # Show detection count
-            cv2.putText(vis_frame, f"Detected: {len(circles)}", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            # Draw on Camera Frame
+            cv2.circle(vis_frame, (x, y), radius, (0, 255, 0), 2)
+            cv2.circle(vis_frame, (x, y), 2, (0, 0, 255), 3)
+            text = f"{size_class} ({radius_mm:.1f}mm)"
+            cv2.putText(vis_frame, text, (x - 20, y - 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
 
-        except Exception as e:
-            # If detection fails, show error but continue
-            cv2.putText(vis_frame, f"Error: {str(e)[:30]}", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        # Show detection count and performance info
+        cv2.putText(vis_frame, f"Detected: {len(circles)}", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-        cv2.putText(vis_frame, f"Frame {self._frame_count}", (10, 60),
+        if self.yolo_worker:
+            cv2.putText(vis_frame, f"YOLO: {self.yolo_inference_time:.0f}ms", (10, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+
+        cv2.putText(vis_frame, f"Frame {self._frame_count}", (10, 90),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         # Update UI
@@ -244,5 +282,13 @@ class MainWindow(QMainWindow):
             self.anim_timer.stop()
 
     def closeEvent(self, event):
+        # Stop camera
         self.camera.stop()
+
+        # Stop YOLO worker thread if running
+        if self.yolo_worker:
+            print("Stopping YOLO worker thread...")
+            self.yolo_worker.stop()
+            print("YOLO worker stopped")
+
         event.accept()

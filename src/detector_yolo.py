@@ -75,7 +75,7 @@ class YOLODetector:
         self.use_tensorrt = use_tensorrt and TORCH_AVAILABLE
         self.model_path = model_path
         self.device = select_device('0' if TORCH_AVAILABLE else 'cpu')
-        self.img_size = 480  # Reduced from 640 for faster inference on Jetson
+        self.img_size = 416  # Reduced from 480 for faster inference on Jetson
         self.half = TORCH_AVAILABLE  # Use FP16 if available
 
         # Performance tracking
@@ -135,7 +135,7 @@ class YOLODetector:
             print(f"Downloading {model_name}...")
             self.model = DetectMultiBackend(model_name, device=self.device)
 
-        self.img_size = 480  # Reduced for faster inference
+        self.img_size = 416  # Reduced for faster inference
 
         # Use FP16 for speedup on Jetson
         if self.half and hasattr(self.model, 'half'):
