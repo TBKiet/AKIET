@@ -223,6 +223,10 @@ class MainWindow(QMainWindow):
             cv2.putText(vis_frame, text, (x - 20, y - 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
 
+        # Update simulation widget with detected discs in real-time
+        if self.detected_objects:
+            self._update_simulation_discs()
+
         # Show detection count and performance info
         cv2.putText(vis_frame, f"Detected: {len(circles)}", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
@@ -236,6 +240,33 @@ class MainWindow(QMainWindow):
 
         # Update UI
         self.camera_widget.update_frame(vis_frame)
+
+    def _update_simulation_discs(self):
+        """Update simulation widget with current detected discs"""
+        sim_discs = []
+        scale_x = 400 / 480
+        scale_y = 450 / 360
+
+        for obj in self.detected_objects:
+            # Fixed radius based on classification
+            size_class = obj['class']
+            if size_class == 'Small (5cm)':
+                fixed_radius = 20
+            elif size_class == 'Medium (7cm)':
+                fixed_radius = 30
+            else:  # Large (10cm)
+                fixed_radius = 40
+
+            sim_disc = {
+                'x': int(obj['x'] * scale_x + 20),
+                'y': int(obj['y'] * scale_y + 20),
+                'radius': fixed_radius,
+                'size_class': size_class,
+                'radius_mm': obj['radius_mm']
+            }
+            sim_discs.append(sim_disc)
+
+        self.sim_widget.set_discs(sim_discs)
 
     def _calibrate(self):
         """
@@ -266,39 +297,17 @@ class MainWindow(QMainWindow):
             print("[DEBUG] No objects detected - cannot start simulation")
             return
 
+        # Update discs (already done in real-time, but ensure it's current)
+        self._update_simulation_discs()
+
         # Find largest object
         target = max(self.detected_objects, key=lambda x: x['radius_mm'])
-
-        # Update simulation widget with detected discs
-        sim_discs = []
-        for obj in self.detected_objects:
-            # Scale coordinates to simulation space (camera is 480x360, sim is 500x500)
-            scale_x = 400 / 480  # Leave room for bins on right
-            scale_y = 450 / 360
-
-            # Fixed radius based on classification (not scaled from camera)
-            size_class = obj['class']
-            if size_class == 'Small (5cm)':
-                fixed_radius = 20
-            elif size_class == 'Medium (7cm)':
-                fixed_radius = 30
-            else:  # Large (10cm)
-                fixed_radius = 40
-
-            sim_disc = {
-                'x': int(obj['x'] * scale_x + 20),
-                'y': int(obj['y'] * scale_y + 20),
-                'radius': fixed_radius,  # Fixed size based on classification
-                'size_class': size_class,
-                'radius_mm': obj['radius_mm']
-            }
-            sim_discs.append(sim_disc)
-
-        self.sim_widget.set_discs(sim_discs)
 
         # Robot starts at bottom-left
         start_x, start_y = (50, 450)
         # Target is the scaled position of largest disc
+        scale_x = 400 / 480
+        scale_y = 450 / 360
         end_x = int(target['x'] * scale_x + 20)
         end_y = int(target['y'] * scale_y + 20)
 
@@ -318,9 +327,10 @@ class MainWindow(QMainWindow):
             bin_y = 340
         self.target_bin_pos = (bin_x, bin_y)
 
-        # Stage 0: Move to disc
+        # Stage 0: Move to disc - CLEAR old paths and start fresh
         self.anim_stage = 0
-        self.sim_widget.set_robot_path(path)
+        self.sim_widget.clear_robot_paths()  # Clear old paths
+        self.sim_widget.add_robot_path(path)  # Add first segment
         self.sim_widget.set_robot_state("Moving")
         self.anim_path = path
         self.anim_idx = 0
@@ -385,7 +395,8 @@ class MainWindow(QMainWindow):
         current_pos = self.sim_widget.robot_pos
         path = self.planner.generate_path(current_pos, self.target_bin_pos, num_points=100)
 
-        self.sim_widget.set_robot_path(path)
+        # ADD second path segment (don't replace first one)
+        self.sim_widget.add_robot_path(path)
         self.sim_widget.set_robot_state("Moving")
         self.anim_path = path
         self.anim_idx = 0

@@ -73,7 +73,7 @@ class SimulationWidget(QWidget):
 
         self.discs = []     # List of dicts: {'x': int, 'y': int, 'radius': int, 'size_class': str}
         self.robot_pos = (50, 450)  # Start position (bottom-left)
-        self.robot_path = []
+        self.robot_paths = []  # List of paths (to show multiple segments)
         self.robot_state = "Idle"  # Idle, Moving, Picking, Placing
         self.sorted_count = 0
         self.total_discs = 0
@@ -85,8 +85,20 @@ class SimulationWidget(QWidget):
         self.update()
 
     def set_robot_path(self, path):
-        self.robot_path = path
+        """Set current path (replaces all paths)"""
+        self.robot_paths = [path] if path else []
         self.robot_state = "Moving"
+        self.update()
+
+    def add_robot_path(self, path):
+        """Add a new path segment (keeps existing paths)"""
+        if path:
+            self.robot_paths.append(path)
+        self.update()
+
+    def clear_robot_paths(self):
+        """Clear all path segments"""
+        self.robot_paths = []
         self.update()
 
     def set_robot_pos(self, x, y):
@@ -122,8 +134,14 @@ class SimulationWidget(QWidget):
         self._draw_enhanced_grid(painter)
 
         # Draw robot path with glow effect
-        if self.robot_path:
-            self._draw_path_with_glow(painter)
+        if self.robot_paths:
+            for idx, path in enumerate(self.robot_paths):
+                # Different color for each path segment
+                if idx == 0:
+                    color = QColor(0, 255, 0)  # Green for first path (to disc)
+                else:
+                    color = QColor(255, 165, 0)  # Orange for return path (to bin)
+                self._draw_path_with_glow(path, color)
 
         # Draw discs with enhanced visuals
         for disc in self.discs:
@@ -188,17 +206,18 @@ class SimulationWidget(QWidget):
         for y in range(0, self.height(), grid_spacing * 2):
             painter.drawText(2, y + 12, f"{y}")
 
-    def _draw_path_with_glow(self, painter):
+    def _draw_path_with_glow(self, painter, path, color):
         """Draw robot path with glow effect"""
-        if not self.robot_path:
+        if not path:
             return
 
         # Convert to QPolygon
         from PyQt5.QtGui import QPolygon
-        path_points = QPolygon([QPoint(p[0], p[1]) for p in self.robot_path])
+        path_points = QPolygon([QPoint(p[0], p[1]) for p in path])
 
         # Glow effect (outer layer)
-        painter.setPen(QPen(QColor(0, 255, 0, 50), 6))
+        glow_color = QColor(color.red(), color.green(), color.blue(), 50)
+        painter.setPen(QPen(glow_color, 6))
         painter.drawPolyline(path_points)
 
         # Main path
@@ -206,7 +225,7 @@ class SimulationWidget(QWidget):
             pen_style = Qt.PenStyle.DashLine if hasattr(Qt, 'PenStyle') else Qt.DashLine
         except:
             pen_style = Qt.DashLine
-        painter.setPen(QPen(QColor(0, 255, 0), 2, pen_style))
+        painter.setPen(QPen(color, 2, pen_style))
         painter.drawPolyline(path_points)
 
     def _draw_enhanced_disc(self, painter, disc):
