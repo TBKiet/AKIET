@@ -28,11 +28,19 @@ import cv2
 from src.ui.main_window import MainWindow
 
 def main():
+    import argparse
+
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='AKIET Robot Wafer Detection System')
+    parser.add_argument('--detector', type=str, choices=['hough', 'yolo'], default='hough',
+                       help='Detection method: hough (default, stable) or yolo (AI-based)')
+    args = parser.parse_args()
+
     app = QApplication(sys.argv)
 
     # Optional: Set global styles later
 
-    window = MainWindow()
+    window = MainWindow(detector_type=args.detector)
     window.show()
 
     sys.exit(app.exec_())

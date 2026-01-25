@@ -27,48 +27,49 @@ from src.planner import PathPlanner
 from src.ui.widgets import CameraWidget, SimulationWidget
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, detector_type='hough'):
         super().__init__()
-        self.setWindowTitle("CV & Robot Sim")  # Shorter title
-        self.resize(320, 180)  # Very compact for tiny display
+        self.setWindowTitle("AKIET - Robot Wafer Detection & Simulation")
+        self.resize(1200, 700)
 
-        # Initialize Core Modules
-        self.camera = Camera(480, 360, 60)  # Optimized: 480x360@60fps
+        # Core Modules
+        self.camera = CameraManager()
 
-        # Choose detector based on availability and user preference
-        # Set to True to enable YOLO with background threading
-        USE_YOLO = YOLO_AVAILABLE  # Enable YOLO if available
-
+        # Initialize detector based on selection
+        self.detector_type = detector_type
         self.yolo_worker = None
-        self.latest_detections = []  # Store latest YOLO results
+        self.latest_detections = []
         self.yolo_inference_time = 0
 
-        if USE_YOLO and YOLO_AVAILABLE:
+        if detector_type == 'yolo':
+            print(f"[INFO] Using YOLO detector")
+            # Imports moved here
             try:
-                print("Loading YOLOv5 detector (GPU)...")
-                yolo_detector = YOLODetector(conf_threshold=0.5)
-                print("✓ YOLOv5 Detector loaded (GPU-accelerated)")
+                from src.detector_yolo import YOLODetector, YOLO_AVAILABLE
+                if YOLO_AVAILABLE:
+                    yolo_detector = YOLODetector(conf_threshold=0.5)
+                    self.detector = yolo_detector
 
-                # Create background worker thread
-                self.yolo_worker = YOLOWorkerThread(yolo_detector)
-                self.yolo_worker.detection_complete.connect(self._on_yolo_detection_complete)
-                self.yolo_worker.start()
-                print("✓ YOLO Worker Thread started")
-
-                # Use Hough as fallback for visualization
-                self.detector = CircleDetector()
+                    # Initialize YOLO worker thread
+                    from src.yolo_worker import YOLOWorkerThread
+                    self.yolo_worker = YOLOWorkerThread(yolo_detector)
+                    self.yolo_worker.detection_complete.connect(self._on_yolo_detection_complete)
+                    self.yolo_worker.start()
+                    print("✓ YOLOv5 Detector loaded and Worker Thread started")
+                else:
+                    print("[WARNING] YOLO not available, falling back to Hough")
+                    self.detector = CircleDetector()
             except Exception as e:
                 print(f"Failed to load YOLO: {e}")
-                print("Falling back to Hough Circle Detector...")
+                print("[WARNING] Falling back to Hough")
                 self.detector = CircleDetector()
-                print("✓ Hough Circle Detector loaded (CPU-optimized)")
         else:
+            print(f"[INFO] Using Hough Circle detector")
             self.detector = CircleDetector()
-            print("✓ Hough Circle Detector loaded (CPU-optimized)")
 
-        self.calibration = CalibrationManager(scale_factor=1.0) # Default 1mm/px (needs calib)
-        self.planner = PathPlanner()
+        self.calibration = CalibrationManager()
         self.classifier = Classifier()
+        self.planner = PathPlanner()
 
         # State
         self.is_running = False
@@ -85,9 +86,11 @@ class MainWindow(QMainWindow):
         self.anim_timer.timeout.connect(self._animate_robot)
         self.anim_path = []
         self.anim_idx = 0
-        self.anim_stage = 0  # 0: move to disc, 1: pick, 2: move to bin, 3: place
+        self.anim_stage = 0  # 0: move to disc, 1: pick, 2: move to bin, 3: place, 4: return home
         self.current_target = None
         self.target_bin_pos = None
+        self.sorting_disc = None  # Disc being sorted (to keep visible)
+        self.frozen_discs = []  # Discs to keep visible during sorting
 
     def _on_yolo_detection_complete(self, circles, inference_time_ms, frame_id):
         """
@@ -269,6 +272,9 @@ class MainWindow(QMainWindow):
             }
             sim_discs.append(sim_disc)
 
+        # Add frozen discs (being sorted) - they stay visible
+        sim_discs.extend(self.frozen_discs)
+
         self.sim_widget.set_discs(sim_discs)
 
     def _calibrate(self):
@@ -319,6 +325,24 @@ class MainWindow(QMainWindow):
         # Store target info for multi-stage animation
         self.current_target = target
         self.current_target_pos = (end_x, end_y)
+
+        # Freeze the target disc - it will stay visible during sorting
+        size_class = target['class']
+        if size_class == 'Small (5cm)':
+            fixed_radius = 20
+        elif size_class == 'Medium (7cm)':
+            fixed_radius = 30
+        else:
+            fixed_radius = 40
+
+        self.sorting_disc = {
+            'x': end_x,
+            'y': end_y,
+            'radius': fixed_radius,
+            'size_class': size_class,
+            'radius_mm': target['radius_mm']
+        }
+        self.frozen_discs = [self.sorting_disc]
 
         # Determine bin position based on size
         bin_x = self.sim_widget.width() - 60  # Right side
@@ -386,9 +410,14 @@ class MainWindow(QMainWindow):
             self.sim_widget.set_robot_state("Placing")
             self.lbl_stats.setText(f"Status: Placing {self.current_target['class']} in bin...")
 
-            # Wait a moment, then finish
+            # Wait a moment, then return home
             from PyQt5.QtCore import QTimer
-            QTimer.singleShot(500, self._finish_sorting)
+            QTimer.singleShot(500, self._start_return_home)
+
+        elif self.anim_stage == 2:
+            # Stage 2 complete: Returned home
+            print("[DEBUG] Stage 3: Returned to home position")
+            self._finish_sorting()
 
     def _start_transport_to_bin(self):
         """Stage 1: Transport disc to appropriate bin"""
@@ -408,6 +437,25 @@ class MainWindow(QMainWindow):
         self.lbl_stats.setText(f"Status: Transporting {self.current_target['class']} to bin...")
         print(f"[DEBUG] Stage 1: Transporting to bin at {self.target_bin_pos}")
 
+    def _start_return_home(self):
+        """Stage 2: Return robot to home position"""
+        self.anim_stage = 2
+
+        # Generate path from current position back to home
+        current_pos = self.sim_widget.robot_pos
+        home_pos = (50, 450)
+        path = self.planner.generate_path(current_pos, home_pos, num_points=100)
+
+        # ADD third path segment (return home)
+        self.sim_widget.add_robot_path(path)
+        self.sim_widget.set_robot_state("Moving")
+        self.anim_path = path
+        self.anim_idx = 0
+        self.anim_timer.start(16)
+
+        self.lbl_stats.setText(f"Status: Returning to home position...")
+        print(f"[DEBUG] Stage 2: Returning home")
+
     def _finish_sorting(self):
         """Complete the sorting sequence"""
         self.sim_widget.set_robot_state("Idle")
@@ -417,6 +465,11 @@ class MainWindow(QMainWindow):
         size_class = self.current_target['class']
         if size_class in self.sim_widget.bin_counts:
             self.sim_widget.bin_counts[size_class] += 1
+
+        # Clear frozen discs - sorting complete
+        self.frozen_discs = []
+        self.sorting_disc = None
+        self._update_simulation_discs()  # Refresh to remove sorted disc
 
         self.lbl_stats.setText(f"Status: Sorting complete! {size_class} placed in bin.")
         print(f"[DEBUG] Sorting complete - {size_class} sorted, bin count: {self.sim_widget.bin_counts[size_class]}")
