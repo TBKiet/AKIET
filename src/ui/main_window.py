@@ -8,7 +8,6 @@ from PyQt5.QtGui import QColor
 
 # Use original CSI camera (works with subprocess + GStreamer)
 from src.camera import Camera
-from src.camera import CameraManager
 
 from src.detector import CircleDetector  # Use Hough Circle - fast on CPU
 
@@ -34,7 +33,7 @@ class MainWindow(QMainWindow):
         self.resize(1200, 700)
 
         # Core Modules
-        self.camera = CameraManager()
+        self.camera = Camera()
 
         # Initialize detector based on selection
         self.detector_type = detector_type
