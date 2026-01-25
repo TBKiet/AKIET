@@ -78,6 +78,13 @@ class SimulationWidget(QWidget):
         self.sorted_count = 0
         self.total_discs = 0
 
+        # Bin counters for each size
+        self.bin_counts = {
+            'Small (5cm)': 0,
+            'Medium (7cm)': 0,
+            'Large (10cm)': 0
+        }
+
     def set_discs(self, discs):
         """Updates the list of discs to render."""
         self.discs = discs
@@ -171,9 +178,9 @@ class SimulationWidget(QWidget):
         bin_spacing = 20
 
         zones = [
-            {"label": "Small\n(5cm)", "color": QColor(76, 175, 80), "y": 50},
-            {"label": "Medium\n(7cm)", "color": QColor(255, 193, 7), "y": 50 + bin_height + bin_spacing},
-            {"label": "Large\n(10cm)", "color": QColor(244, 67, 54), "y": 50 + 2*(bin_height + bin_spacing)}
+            {"label": "Small", "size": "(5cm)", "color": QColor(76, 175, 80), "y": 50, "key": "Small (5cm)"},
+            {"label": "Medium", "size": "(7cm)", "color": QColor(255, 193, 7), "y": 50 + bin_height + bin_spacing, "key": "Medium (7cm)"},
+            {"label": "Large", "size": "(10cm)", "color": QColor(244, 67, 54), "y": 50 + 2*(bin_height + bin_spacing), "key": "Large (10cm)"}
         ]
 
         for zone in zones:
@@ -185,8 +192,20 @@ class SimulationWidget(QWidget):
             # Draw label
             painter.setPen(zone["color"])
             painter.setFont(QFont('Arial', 10, QFont.Bold))
-            painter.drawText(bin_x, zone["y"], bin_width, bin_height,
+            painter.drawText(bin_x, zone["y"] + 20, bin_width, 20,
                            Qt.AlignCenter, zone["label"])
+
+            # Draw size
+            painter.setFont(QFont('Arial', 8))
+            painter.drawText(bin_x, zone["y"] + 40, bin_width, 15,
+                           Qt.AlignCenter, zone["size"])
+
+            # Draw count
+            count = self.bin_counts.get(zone["key"], 0)
+            painter.setFont(QFont('Arial', 16, QFont.Bold))
+            painter.setPen(Qt.white)
+            painter.drawText(bin_x, zone["y"] + 60, bin_width, 30,
+                           Qt.AlignCenter, str(count))
 
     def _draw_enhanced_grid(self, painter):
         """Draw subtle grid with better styling"""
@@ -312,7 +331,7 @@ class SimulationWidget(QWidget):
         # Semi-transparent background
         painter.setBrush(QColor(0, 0, 0, 150))
         painter.setPen(Qt.NoPen)
-        painter.drawRect(10, 10, 200, 100)
+        painter.drawRect(10, 10, 200, 80)  # Reduced height
 
         # Status text
         painter.setPen(Qt.white)
@@ -327,17 +346,4 @@ class SimulationWidget(QWidget):
 
         y_offset += 18
         painter.drawText(20, y_offset, f"Position: ({self.robot_pos[0]}, {self.robot_pos[1]})")
-
-        y_offset += 18
-        painter.drawText(20, y_offset, f"Discs: {self.sorted_count}/{self.total_discs}")
-
-        # Progress bar
-        if self.total_discs > 0:
-            y_offset += 20
-            progress = self.sorted_count / self.total_discs
-            bar_width = 160
-            painter.setBrush(QColor(50, 50, 50))
-            painter.drawRect(20, y_offset, bar_width, 10)
-            painter.setBrush(QColor(0, 255, 0))
-            painter.drawRect(20, y_offset, int(bar_width * progress), 10)
 

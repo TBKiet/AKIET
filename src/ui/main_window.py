@@ -226,6 +226,9 @@ class MainWindow(QMainWindow):
         # Update simulation widget with detected discs in real-time
         if self.detected_objects:
             self._update_simulation_discs()
+        else:
+            # Clear simulation when no objects
+            self.sim_widget.set_discs([])
 
         # Show detection count and performance info
         cv2.putText(vis_frame, f"Detected: {len(circles)}", (10, 30),
@@ -409,11 +412,17 @@ class MainWindow(QMainWindow):
         """Complete the sorting sequence"""
         self.sim_widget.set_robot_state("Idle")
         self.sim_widget.sorted_count += 1
-        self.lbl_stats.setText(f"Status: Sorting complete! {self.current_target['class']} placed in bin.")
-        print(f"[DEBUG] Sorting complete - {self.current_target['class']} sorted")
+
+        # Increment bin counter for this size
+        size_class = self.current_target['class']
+        if size_class in self.sim_widget.bin_counts:
+            self.sim_widget.bin_counts[size_class] += 1
+
+        self.lbl_stats.setText(f"Status: Sorting complete! {size_class} placed in bin.")
+        print(f"[DEBUG] Sorting complete - {size_class} sorted, bin count: {self.sim_widget.bin_counts[size_class]}")
 
         # Clear path
-        self.sim_widget.set_robot_path([])
+        self.sim_widget.clear_robot_paths()
 
     def closeEvent(self, event):
         # Stop camera
