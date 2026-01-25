@@ -8,6 +8,7 @@ from PyQt5.QtGui import QColor
 
 # Use original CSI camera (works with subprocess + GStreamer)
 from src.camera import Camera
+from src.camera import CameraManager
 
 from src.detector import CircleDetector  # Use Hough Circle - fast on CPU
 
